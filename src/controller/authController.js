@@ -1,39 +1,24 @@
-const User = require('../models/User');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
+const User = require("../models/User");
+const jwt = require("jsonwebtoken");
+const bcrypt = require("bcryptjs");
 
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
+
+    // Kiểm tra dữ liệu
+    if (!name || !email || !password)
+      return res.status(400).json({ message: "Vui lòng nhập đủ thông tin" });
 
     const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: 'Email đã được đăng ký' });
-
+    if (existing) return res.status(400).json({ message: "Email đã tồn tại" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await User.create({ name, email, password: hashedPassword });
 
-    const newUser = new User({ name, email, password: hashedPassword, role });
-    await newUser.save();
-
-    // Tạo token
-    const token = jwt.sign(
-      { id: newUser._id, email: newUser.email, role: newUser.role },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    res.status(201).json({
-      message: 'Đăng ký thành công',
-      token,
-      user: {
-        id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role
-      }
-    });
+    res.status(201).json({ message: "Đăng ký thành công", user });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };
 
@@ -42,29 +27,27 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản' });
+    if (!user) return res.status(404).json({ message: "Email không tồn tại" });
 
-    const validPass = await bcrypt.compare(password, user.password);
-    if (!validPass) return res.status(401).json({ message: 'Sai mật khẩu' });
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ message: "Sai mật khẩu" });
 
-    //  JWT token
     const token = jwt.sign(
-      { id: user._id, email: user.email, role: user.role },
+      { id: user._id, email: user.email },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "1h" }
     );
 
-    res.json({
-      message: 'Đăng nhập thành công',
+    res.status(200).json({
+      message: "Đăng nhập thành công",
       token,
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
-      }
+      },
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ message: err.message });
   }
 };

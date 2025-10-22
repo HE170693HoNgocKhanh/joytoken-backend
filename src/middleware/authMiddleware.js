@@ -1,19 +1,16 @@
 const jwt = require("jsonwebtoken");
 
 exports.verifyToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader)
-    return res.status(401).json({ message: "Thiếu token xác thực" });
+  const token = req.headers.authorization?.split(" ")[1]; // "Bearer <token>"
 
-  const token = authHeader.split(" ")[1];
   if (!token)
-    return res.status(401).json({ message: "Token không hợp lệ" });
+    return res.status(401).json({ message: "Chưa đăng nhập hoặc thiếu token" });
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
+    req.user = decoded; // Gắn thông tin user vào request
     next();
   } catch (err) {
-    res.status(403).json({ message: "Token không hợp lệ hoặc đã hết hạn" });
+    res.status(403).json({ message: "Token không hợp lệ hoặc hết hạn" });
   }
 };

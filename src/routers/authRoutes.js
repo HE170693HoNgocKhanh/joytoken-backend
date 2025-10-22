@@ -5,6 +5,8 @@ const router = express.Router();
 
 router.post('/register', register);
 router.post('/login', login);
+
+// Route yêu cầu đăng nhập mới truy cập được
 router.get('/profile', verifyToken, (req, res) => {
   res.json({ message: 'Đã xác thực token!', user: req.user });
 });
