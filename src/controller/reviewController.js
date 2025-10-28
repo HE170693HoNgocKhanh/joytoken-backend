@@ -10,7 +10,7 @@ exports.createReview = async (req, res) => {
     if (!productId || !rating || !comment) {
       return res.status(400).json({
         success: false,
-        message: "Vui lòng nhập đủ thông tin đánh giá"
+        message: "Vui lòng nhập đủ thông tin đánh giá",
       });
     }
 
@@ -19,34 +19,34 @@ exports.createReview = async (req, res) => {
     if (!product) {
       return res.status(404).json({
         success: false,
-        message: "Sản phẩm không tồn tại"
+        message: "Sản phẩm không tồn tại",
       });
     }
 
     // Kiểm tra user đã mua sản phẩm chưa
     const hasPurchased = await Order.findOne({
       userId: req.user.id,
-      'items.productId': productId,
-      status: 'Delivered'
+      "items.productId": productId,
+      status: "Delivered",
     });
 
     if (!hasPurchased) {
       return res.status(400).json({
         success: false,
-        message: "Bạn chỉ có thể đánh giá sản phẩm đã mua"
+        message: "Bạn chỉ có thể đánh giá sản phẩm đã mua",
       });
     }
 
     // Kiểm tra user đã review sản phẩm này chưa
     const existingReview = await Review.findOne({
       productId,
-      userId: req.user.id
+      userId: req.user.id,
     });
 
     if (existingReview) {
       return res.status(400).json({
         success: false,
-        message: "Bạn đã đánh giá sản phẩm này rồi"
+        message: "Bạn đã đánh giá sản phẩm này rồi",
       });
     }
 
@@ -57,7 +57,7 @@ exports.createReview = async (req, res) => {
       userName: req.user.name,
       rating,
       comment,
-      images: images || []
+      images: images || [],
     });
 
     // Cập nhật rating và numReviews cho product
@@ -67,28 +67,28 @@ exports.createReview = async (req, res) => {
 
     await Product.findByIdAndUpdate(productId, {
       rating: avgRating,
-      numReviews: reviews.length
+      numReviews: reviews.length,
     });
 
     const populatedReview = await Review.findById(review._id)
-      .populate('userId', 'name')
-      .populate('productId', 'name image');
+      .populate("userId", "name")
+      .populate("productId", "name image");
 
     res.status(201).json({
       success: true,
       message: "Đánh giá thành công",
-      data: populatedReview
+      data: populatedReview,
     });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Bạn đã đánh giá sản phẩm này rồi"
+        message: "Bạn đã đánh giá sản phẩm này rồi",
       });
     }
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -108,7 +108,7 @@ exports.getProductReviews = async (req, res) => {
     }
 
     const reviews = await Review.find(filter)
-      .populate('userId', 'name')
+      .populate("userId", "name")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -117,14 +117,14 @@ exports.getProductReviews = async (req, res) => {
 
     // Tính toán thống kê rating
     const ratingStats = await Review.aggregate([
-      { $match: { productId: require('mongoose').Types.ObjectId(productId) } },
+      { $match: { productId: productId } },
       {
         $group: {
-          _id: '$rating',
-          count: { $sum: 1 }
-        }
+          _id: "$rating",
+          count: { $sum: 1 },
+        },
       },
-      { $sort: { _id: -1 } }
+      { $sort: { _id: -1 } },
     ]);
 
     res.status(200).json({
@@ -134,14 +134,14 @@ exports.getProductReviews = async (req, res) => {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit)
+        pages: Math.ceil(total / limit),
       },
-      ratingStats
+      ratingStats,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -150,17 +150,17 @@ exports.getProductReviews = async (req, res) => {
 exports.getMyReviews = async (req, res) => {
   try {
     const reviews = await Review.find({ userId: req.user.id })
-      .populate('productId', 'name image price')
+      .populate("productId", "name image price")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
-      data: reviews
+      data: reviews,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -174,7 +174,7 @@ exports.updateReview = async (req, res) => {
     if (!review) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy đánh giá"
+        message: "Không tìm thấy đánh giá",
       });
     }
 
@@ -182,7 +182,7 @@ exports.updateReview = async (req, res) => {
     if (review.userId.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền chỉnh sửa đánh giá này"
+        message: "Bạn không có quyền chỉnh sửa đánh giá này",
       });
     }
 
@@ -190,7 +190,7 @@ exports.updateReview = async (req, res) => {
       req.params.id,
       { rating, comment, images },
       { new: true, runValidators: true }
-    ).populate('productId', 'name image');
+    ).populate("productId", "name image");
 
     // Cập nhật lại rating của product
     const reviews = await Review.find({ productId: review.productId });
@@ -199,18 +199,18 @@ exports.updateReview = async (req, res) => {
 
     await Product.findByIdAndUpdate(review.productId, {
       rating: avgRating,
-      numReviews: reviews.length
+      numReviews: reviews.length,
     });
 
     res.status(200).json({
       success: true,
       message: "Cập nhật đánh giá thành công",
-      data: updatedReview
+      data: updatedReview,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -222,15 +222,15 @@ exports.deleteReview = async (req, res) => {
     if (!review) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy đánh giá"
+        message: "Không tìm thấy đánh giá",
       });
     }
 
     // Kiểm tra quyền (user sở hữu hoặc admin)
-    if (review.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+    if (review.userId.toString() !== req.user.id && req.user.role !== "admin") {
       return res.status(403).json({
         success: false,
-        message: "Bạn không có quyền xóa đánh giá này"
+        message: "Bạn không có quyền xóa đánh giá này",
       });
     }
 
@@ -240,23 +240,26 @@ exports.deleteReview = async (req, res) => {
     const reviews = await Review.find({ productId: review.productId });
     let avgRating = 0;
     if (reviews.length > 0) {
-      const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+      const totalRating = reviews.reduce(
+        (sum, review) => sum + review.rating,
+        0
+      );
       avgRating = totalRating / reviews.length;
     }
 
     await Product.findByIdAndUpdate(review.productId, {
       rating: avgRating,
-      numReviews: reviews.length
+      numReviews: reviews.length,
     });
 
     res.status(200).json({
       success: true,
-      message: "Xóa đánh giá thành công"
+      message: "Xóa đánh giá thành công",
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -269,8 +272,8 @@ exports.getAllReviews = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const reviews = await Review.find()
-      .populate('userId', 'name email')
-      .populate('productId', 'name image')
+      .populate("userId", "name email")
+      .populate("productId", "name image")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -284,13 +287,13 @@ exports.getAllReviews = async (req, res) => {
         page,
         limit,
         total,
-        pages: Math.ceil(total / limit)
-      }
+        pages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -304,24 +307,26 @@ exports.verifyReview = async (req, res) => {
       req.params.id,
       { isVerified },
       { new: true }
-    ).populate('userId', 'name').populate('productId', 'name');
+    )
+      .populate("userId", "name")
+      .populate("productId", "name");
 
     if (!review) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy đánh giá"
+        message: "Không tìm thấy đánh giá",
       });
     }
 
     res.status(200).json({
       success: true,
       message: "Cập nhật trạng thái xác minh thành công",
-      data: review
+      data: review,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
