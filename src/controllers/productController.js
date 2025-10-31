@@ -182,11 +182,12 @@ exports.updateProduct = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền sở hữu (chỉ seller hoặc admin mới được update)
-    if (
-      product.seller.toString() !== req.user.id &&
-      req.user.role !== "admin"
-    ) {
+    // 🔹 Kiểm tra quyền sở hữu (chỉ seller hoặc admin)
+    const sellerId = product.seller ? product.seller.toString() : null;
+    const userId = req.user?.id;
+    const role = req.user?.role;
+
+    if (sellerId && sellerId !== userId && role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền chỉnh sửa sản phẩm này",
@@ -206,8 +207,11 @@ exports.updateProduct = async (req, res) => {
       isActive,
     } = req.body;
 
-    // Kiểm tra category nếu có thay đổi
-    if (category && category !== product.category.toString()) {
+    // 🔹 Kiểm tra category nếu có thay đổi
+    const currentCategory = product.category
+      ? product.category.toString()
+      : null;
+    if (category && category !== currentCategory) {
       const categoryExists = await Category.findById(category);
       if (!categoryExists) {
         return res.status(400).json({
@@ -217,6 +221,7 @@ exports.updateProduct = async (req, res) => {
       }
     }
 
+    // 🔹 Cập nhật
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
       {
@@ -236,18 +241,20 @@ exports.updateProduct = async (req, res) => {
       .populate("category", "name")
       .populate("seller", "name email");
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Cập nhật sản phẩm thành công",
       data: updatedProduct,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("🔥 Error in updateProduct:", error);
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
+
 
 // Xóa product (soft delete)
 exports.deleteProduct = async (req, res) => {
@@ -260,14 +267,27 @@ exports.deleteProduct = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền sở hữu
-    if (
-      product.seller.toString() !== req.user.id &&
-      req.user.role !== "admin"
-    ) {
+    // 🔍 Debug log để xem giá trị thực tế
+    console.log("🧩 DEBUG: product.seller =", product.seller);
+    console.log("🧩 DEBUG: req.user =", req.user);
+
+    const sellerId = product.seller ? product.seller.toString() : null;
+    const userId = req.user?.id;
+    const role = req.user?.role;
+
+    // 🔒 Chỉ cho phép chủ sản phẩm hoặc admin
+    if (sellerId && sellerId !== userId && role !== "admin") {
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền xóa sản phẩm này",
+      });
+    }
+
+    // ⚡ Nếu product không có seller (hàng cũ hoặc admin tạo)
+    if (!sellerId && role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Sản phẩm không xác định người bán, chỉ admin có thể xóa",
       });
     }
 
@@ -277,17 +297,19 @@ exports.deleteProduct = async (req, res) => {
       { new: true }
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Xóa sản phẩm thành công",
     });
   } catch (error) {
-    res.status(500).json({
+    console.error("🔥 DELETE PRODUCT ERROR:", error);
+    return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
+
 
 // Lấy products theo seller
 exports.getProductsBySeller = async (req, res) => {
