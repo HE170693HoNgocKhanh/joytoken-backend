@@ -1,19 +1,32 @@
 const Product = require("../models/Product");
 const Category = require("../models/Category");
+const cloudinary = require("../config/cloudinary");
 
-// Lấy tất cả products với phân trang và filter
+// 🧩 Helper: upload 1 hoặc nhiều ảnh lên Cloudinary
+const uploadToCloudinary = async (files) => {
+  const uploaded = [];
+  for (const file of files) {
+    const result = await cloudinary.uploader.upload(file.path, {
+      folder: "products",
+      transformation: [{ quality: "auto", fetch_format: "auto" }],
+    });
+    uploaded.push(result.secure_url);
+  }
+  return uploaded;
+};
+
+// ========================
+// 📦 GET ALL PRODUCTS
+// ========================
 exports.getAllProducts = async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Build filter object
     const filter = { isActive: true };
 
-    if (req.query.category) {
-      filter.category = req.query.category;
-    }
+    if (req.query.category) filter.category = req.query.category;
 
     if (req.query.search) {
       filter.$or = [
@@ -30,31 +43,25 @@ exports.getAllProducts = async (req, res) => {
         filter.price.$lte = parseFloat(req.query.maxPrice);
     }
 
-    // Sort
     let sort = {};
-    if (req.query.sort) {
-      const sortBy = req.query.sort;
-      switch (sortBy) {
-        case "price_asc":
-          sort.price = 1;
-          break;
-        case "price_desc":
-          sort.price = -1;
-          break;
-        case "name_asc":
-          sort.name = 1;
-          break;
-        case "name_desc":
-          sort.name = -1;
-          break;
-        case "rating":
-          sort.rating = -1;
-          break;
-        default:
-          sort.createdAt = -1;
-      }
-    } else {
-      sort.createdAt = -1;
+    switch (req.query.sort) {
+      case "price_asc":
+        sort.price = 1;
+        break;
+      case "price_desc":
+        sort.price = -1;
+        break;
+      case "name_asc":
+        sort.name = 1;
+        break;
+      case "name_desc":
+        sort.name = -1;
+        break;
+      case "rating":
+        sort.rating = -1;
+        break;
+      default:
+        sort.createdAt = -1;
     }
 
     const products = await Product.find(filter)
@@ -68,77 +75,73 @@ exports.getAllProducts = async (req, res) => {
     res.status(200).json({
       success: true,
       data: products,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Lấy product theo ID
+// ========================
+// 🔍 GET PRODUCT BY ID
+// ========================
 exports.getProductById = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id)
       .populate("category", "name description")
       .populate("seller", "name email");
 
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy sản phẩm",
-      });
-    }
+    if (!product)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy sản phẩm" });
 
-    res.status(200).json({
-      success: true,
-      data: product,
-    });
+    res.status(200).json({ success: true, data: product });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Tạo product mới
+// ========================
+// ➕ CREATE PRODUCT
+// ========================
 exports.createProduct = async (req, res) => {
   try {
-    const {
-      name,
-      description,
-      price,
-      category,
-      image,
-      images,
-      countInStock,
-      variants,
-      personalize,
-    } = req.body;
+    const { name, description, price, category, countInStock } = req.body;
 
-    // Validate required fields
-    if (!name || !description || !price || !category) {
+    if (!name || !description || !price || !category)
       return res.status(400).json({
         success: false,
         message: "Vui lòng nhập đủ thông tin bắt buộc",
       });
+
+    const categoryExists = await Category.findById(category);
+    if (!categoryExists)
+      return res
+        .status(400)
+        .json({ success: false, message: "Danh mục không tồn tại" });
+
+    let variants = [];
+    if (req.body.variants) {
+      if (Array.isArray(req.body.variants)) {
+        variants = req.body.variants.map((v) => JSON.parse(v));
+      } else {
+        variants = [JSON.parse(req.body.variants)];
+      }
     }
 
-    // Kiểm tra category tồn tại
-    const categoryExists = await Category.findById(category);
-    if (!categoryExists) {
-      return res.status(400).json({
-        success: false,
-        message: "Danh mục không tồn tại",
-      });
+    // 📸 Upload ảnh (nếu có)
+    let image = null;
+    let images = [];
+    if (req.files) {
+      if (req.files.image) {
+        const uploadedMain = await uploadToCloudinary(req.files.image);
+        image = uploadedMain[0];
+      }
+      if (req.files.images) {
+        const uploadedList = await uploadToCloudinary(req.files.images);
+        images = uploadedList;
+      }
     }
 
     const product = await Product.create({
@@ -150,8 +153,8 @@ exports.createProduct = async (req, res) => {
       images,
       countInStock: countInStock || 0,
       variants,
-      personalize: personalize || false,
-      seller: req.user.id, // Từ middleware auth
+      personalize: false,
+      seller: req.user.id,
     });
 
     const populatedProduct = await Product.findById(product._id)
@@ -164,64 +167,66 @@ exports.createProduct = async (req, res) => {
       data: populatedProduct,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// Cập nhật product
+// ========================
+// ✏️ UPDATE PRODUCT
+// ========================
 exports.updateProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy sản phẩm",
-      });
-    }
+    if (!product)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy sản phẩm" });
 
-    // 🔹 Kiểm tra quyền sở hữu (chỉ seller hoặc admin)
-    const sellerId = product.seller ? product.seller.toString() : null;
+    const sellerId = product.seller?.toString();
     const userId = req.user?.id;
     const role = req.user?.role;
-
-    if (sellerId && sellerId !== userId && role !== "admin") {
+    if (sellerId && sellerId !== userId && role !== "admin")
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền chỉnh sửa sản phẩm này",
       });
-    }
 
     const {
       name,
       description,
       price,
       category,
-      image,
-      images,
       countInStock,
       variants,
       personalize,
       isActive,
     } = req.body;
 
-    // 🔹 Kiểm tra category nếu có thay đổi
-    const currentCategory = product.category
-      ? product.category.toString()
-      : null;
-    if (category && category !== currentCategory) {
+    // 🔍 Check category nếu đổi
+    if (category && category !== product.category.toString()) {
       const categoryExists = await Category.findById(category);
-      if (!categoryExists) {
-        return res.status(400).json({
-          success: false,
-          message: "Danh mục không tồn tại",
-        });
+      if (!categoryExists)
+        return res
+          .status(400)
+          .json({ success: false, message: "Danh mục không tồn tại" });
+    }
+
+    // 📸 Upload ảnh mới (nếu có)
+    let image = product.image;
+    let images = product.images || [];
+
+    if (req.files) {
+      if (req.files.image && req.files.image.length > 0) {
+        const uploadedMain = await uploadToCloudinary(req.files.image);
+        image = uploadedMain[0]; // thay ảnh chính
+      }
+
+      if (req.files.images && req.files.images.length > 0) {
+        const uploadedList = await uploadToCloudinary(req.files.images);
+        images = [...images, ...uploadedList]; // giữ ảnh cũ, thêm ảnh mới
       }
     }
 
-    // 🔹 Cập nhật
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
       {
@@ -241,77 +246,48 @@ exports.updateProduct = async (req, res) => {
       .populate("category", "name")
       .populate("seller", "name email");
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: "Cập nhật sản phẩm thành công",
       data: updatedProduct,
     });
   } catch (error) {
-    console.error("🔥 Error in updateProduct:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-// Xóa product (soft delete)
+// ========================
+// 🗑️ DELETE PRODUCT (SOFT)
+// ========================
 exports.deleteProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
-    if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Không tìm thấy sản phẩm",
-      });
-    }
+    if (!product)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy sản phẩm" });
 
-    // 🔍 Debug log để xem giá trị thực tế
-    console.log("🧩 DEBUG: product.seller =", product.seller);
-    console.log("🧩 DEBUG: req.user =", req.user);
-
-    const sellerId = product.seller ? product.seller.toString() : null;
+    const sellerId = product.seller?.toString();
     const userId = req.user?.id;
     const role = req.user?.role;
 
-    // 🔒 Chỉ cho phép chủ sản phẩm hoặc admin
-    if (sellerId && sellerId !== userId && role !== "admin") {
+    if (sellerId && sellerId !== userId && role !== "admin")
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền xóa sản phẩm này",
       });
-    }
 
-    // ⚡ Nếu product không có seller (hàng cũ hoặc admin tạo)
-    if (!sellerId && role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        message: "Sản phẩm không xác định người bán, chỉ admin có thể xóa",
-      });
-    }
+    await Product.findByIdAndUpdate(req.params.id, { isActive: false });
 
-    await Product.findByIdAndUpdate(
-      req.params.id,
-      { isActive: false },
-      { new: true }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Xóa sản phẩm thành công",
-    });
+    res.status(200).json({ success: true, message: "Xóa sản phẩm thành công" });
   } catch (error) {
-    console.error("🔥 DELETE PRODUCT ERROR:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-// Lấy products theo seller
+// ========================
+// 🧑‍💼 GET PRODUCTS BY SELLER
+// ========================
 exports.getProductsBySeller = async (req, res) => {
   try {
     const sellerId = req.params.sellerId || req.user.id;
@@ -320,32 +296,23 @@ exports.getProductsBySeller = async (req, res) => {
       .populate("category", "name")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({
-      success: true,
-      data: products,
-    });
+    res.status(200).json({ success: true, data: products });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
+// ========================
+// 📂 GET PRODUCTS BY CATEGORY
+// ========================
 exports.getProductsByCategory = async (req, res) => {
   try {
     const products = await Product.find({ category: req.params.categoryId })
       .populate("category", "name")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({
-      success: true,
-      data: products,
-    });
+    res.status(200).json({ success: true, data: products });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
