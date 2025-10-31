@@ -7,7 +7,7 @@ const {
   updateOrderStatus,
   updateOrderToPaid,
   cancelOrder
-} = require('../controller/orderController');
+} = require('../controllers/orderController');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();

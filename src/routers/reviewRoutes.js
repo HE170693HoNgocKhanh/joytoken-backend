@@ -7,7 +7,7 @@ const {
   deleteReview,
   getAllReviews,
   verifyReview
-} = require('../controller/reviewController');
+} = require('../controllers/reviewController');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();
