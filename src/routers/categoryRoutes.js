@@ -5,7 +5,7 @@ const {
   createCategory,
   updateCategory,
   deleteCategory
-} = require('../controller/categoryController');
+} = require('../controllers/categoryController');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();

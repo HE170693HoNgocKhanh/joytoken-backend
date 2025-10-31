@@ -6,7 +6,7 @@ const {
   updateProduct,
   deleteProduct,
   getProductsBySeller
-} = require('../controller/productController');
+} = require('../controllers/productController');
 const { verifyToken, requireRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();

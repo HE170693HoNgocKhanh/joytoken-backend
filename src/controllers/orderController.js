@@ -1,7 +1,7 @@
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 
-// Tạo order mới
+// ==================== TẠO ORDER MỚI ====================
 exports.createOrder = async (req, res) => {
   try {
     const {
@@ -21,7 +21,7 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // Kiểm tra và update stock cho từng sản phẩm
+    // ✅ Kiểm tra tồn kho từng sản phẩm
     for (let item of items) {
       const product = await Product.findById(item.productId);
       if (!product) {
@@ -39,18 +39,36 @@ exports.createOrder = async (req, res) => {
       }
     }
 
+    // ✅ TÍNH LẠI GIÁ TRỊ VÀ ÁP DỤNG GIẢM GIÁ (nếu đủ điều kiện)
+    let adjustedItemsPrice = itemsPrice;
+    let discountAmount = 0;
+
+    // Lấy tất cả đơn hàng cũ của user
+    const previousOrders = await Order.find({ userId: req.user.id });
+
+    // Nếu khách đã từng mua và lần này mua ≥ 3 sản phẩm
+    if (previousOrders.length > 0 && items.length >= 3) {
+      discountAmount = adjustedItemsPrice * 0.1; // giảm 10%
+      adjustedItemsPrice = adjustedItemsPrice - discountAmount;
+    }
+
+    const finalTotalPrice = adjustedItemsPrice + taxPrice + shippingPrice;
+
+    // ✅ Tạo order mới
     const order = await Order.create({
       userId: req.user.id,
       items,
       shippingAddress,
       paymentMethod,
-      itemsPrice,
+      itemsPrice: adjustedItemsPrice,
       taxPrice,
       shippingPrice,
-      totalPrice
+      totalPrice: finalTotalPrice,
+      discountAmount,
+      discountApplied: discountAmount > 0,
     });
 
-    // Cập nhật stock của các sản phẩm
+    // ✅ Cập nhật tồn kho
     for (let item of items) {
       await Product.findByIdAndUpdate(
         item.productId,
@@ -58,22 +76,30 @@ exports.createOrder = async (req, res) => {
       );
     }
 
+    // ✅ Populate dữ liệu để trả về frontend
     const populatedOrder = await Order.findById(order._id)
-      .populate('userId', 'name email')
-      .populate('items.productId', 'name image');
+      .populate("userId", "name email")
+      .populate("items.productId", "name image");
 
     res.status(201).json({
       success: true,
-      message: "Đặt hàng thành công",
-      data: populatedOrder
+      message: discountAmount > 0
+        ? "Đặt hàng thành công — Voucher 10% đã được áp dụng!"
+        : "Đặt hàng thành công",
+      data: populatedOrder,
+      discountApplied: discountAmount > 0,
+      discountAmount
     });
   } catch (error) {
+    console.error("❌ Lỗi tạo đơn hàng:", error);
     res.status(500).json({
       success: false,
       message: error.message
     });
   }
 };
+
+// ==================== CÁC HÀM KHÁC GIỮ NGUYÊN ====================
 
 // Lấy tất cả orders (cho admin)
 exports.getAllOrders = async (req, res) => {
@@ -147,7 +173,6 @@ exports.getOrderById = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền truy cập (chỉ user sở hữu hoặc admin)
     if (order.userId._id.toString() !== req.user.id && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -167,7 +192,7 @@ exports.getOrderById = async (req, res) => {
   }
 };
 
-// Cập nhật trạng thái order (cho admin/staff)
+// Cập nhật trạng thái order
 exports.updateOrderStatus = async (req, res) => {
   try {
     const { status } = req.body;
@@ -189,8 +214,6 @@ exports.updateOrderStatus = async (req, res) => {
     }
 
     const updateData = { status };
-
-    // Tự động cập nhật deliveredAt khi status = Delivered
     if (status === 'Delivered') {
       updateData.isDelivered = true;
       updateData.deliveredAt = new Date();
@@ -200,7 +223,9 @@ exports.updateOrderStatus = async (req, res) => {
       req.params.id,
       updateData,
       { new: true }
-    ).populate('userId', 'name email').populate('items.productId', 'name image');
+    )
+      .populate('userId', 'name email')
+      .populate('items.productId', 'name image');
 
     res.status(200).json({
       success: true,
@@ -256,7 +281,7 @@ exports.updateOrderToPaid = async (req, res) => {
   }
 };
 
-// Hủy order (chỉ khi status = Pending)
+// Hủy order
 exports.cancelOrder = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id);
@@ -267,7 +292,6 @@ exports.cancelOrder = async (req, res) => {
       });
     }
 
-    // Kiểm tra quyền hủy (chỉ user sở hữu)
     if (order.userId.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
@@ -275,7 +299,6 @@ exports.cancelOrder = async (req, res) => {
       });
     }
 
-    // Chỉ cho phép hủy khi status = Pending
     if (order.status !== 'Pending') {
       return res.status(400).json({
         success: false,
@@ -283,7 +306,6 @@ exports.cancelOrder = async (req, res) => {
       });
     }
 
-    // Hoàn lại stock cho các sản phẩm
     for (let item of order.items) {
       await Product.findByIdAndUpdate(
         item.productId,
