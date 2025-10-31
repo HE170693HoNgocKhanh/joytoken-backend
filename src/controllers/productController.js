@@ -197,7 +197,6 @@ exports.updateProduct = async (req, res) => {
       price,
       category,
       countInStock,
-      variants,
       personalize,
       isActive,
     } = req.body;
@@ -211,6 +210,16 @@ exports.updateProduct = async (req, res) => {
           .json({ success: false, message: "Danh mục không tồn tại" });
     }
 
+    // 🔧 Parse variants
+    let variants = [];
+    if (req.body.variants) {
+      if (Array.isArray(req.body.variants)) {
+        variants = req.body.variants.map((v) => JSON.parse(v));
+      } else {
+        variants = [JSON.parse(req.body.variants)];
+      }
+    }
+
     // 📸 Upload ảnh mới (nếu có)
     let image = product.image;
     let images = product.images || [];
@@ -220,7 +229,6 @@ exports.updateProduct = async (req, res) => {
         const uploadedMain = await uploadToCloudinary(req.files.image);
         image = uploadedMain[0]; // thay ảnh chính
       }
-
       if (req.files.images && req.files.images.length > 0) {
         const uploadedList = await uploadToCloudinary(req.files.images);
         images = [...images, ...uploadedList]; // giữ ảnh cũ, thêm ảnh mới
@@ -236,7 +244,7 @@ exports.updateProduct = async (req, res) => {
         category,
         image,
         images,
-        countInStock,
+        countInStock, // FE đã gửi tổng số lượng
         variants,
         personalize,
         isActive,
@@ -255,6 +263,7 @@ exports.updateProduct = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // ========================
 // 🗑️ DELETE PRODUCT (SOFT)

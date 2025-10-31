@@ -49,7 +49,7 @@ router.put(
   requireRole(["seller", "admin"]),
   upload.fields([
     { name: "image", maxCount: 1 },
-    { name: "images", maxCount: 5 },
+    { name: "images", maxCount: 3 },
   ]),
   updateProduct
 );
