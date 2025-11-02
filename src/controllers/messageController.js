@@ -36,3 +36,13 @@ exports.getConversationDetail = async (req, res) => {
     });
   }
 };
+exports.uploadImage = async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: "No image uploaded" });
+  }
+
+  return res.json({
+    message: "Upload successful",
+    imageUrl: req.file.path, // Cloudinary auto returns secure url
+  });
+};
