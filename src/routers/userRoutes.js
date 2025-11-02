@@ -8,7 +8,9 @@ const {
   updateProfile,
   uploadAvatar,
   getAllUser,
-  updateByAdmin
+  updateByAdmin,
+  getDashboardStatistics,
+  getDailyRevenueReport,
 } = require("../controllers/userController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const multer = require("multer");
@@ -27,9 +29,24 @@ const upload = multer({ storage });
 
 // ✅ Routes
 router.get("/get-all", verifyToken, requireRole(["admin"]), getAllUser);
+router.get(
+  "/statistics",
+  verifyToken,
+  requireRole(["admin"]),
+  getDashboardStatistics
+);
+
+router.get(
+  "/revenue/daily",
+  verifyToken,
+  requireRole(["admin"]),
+  getDailyRevenueReport
+);
+
 router.get("/profile", verifyToken, getProfile);
 router.put("/profile", verifyToken, updateProfile);
-router.put("/update-by-admin/:id",
+router.put(
+  "/update-by-admin/:id",
   verifyToken,
   requireRole(["admin"]),
   updateByAdmin

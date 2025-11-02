@@ -1,4 +1,15 @@
 const User = require("../models/User");
+const Category = require("../models/Category");
+const Order = require("../models/Order");
+const Product = require("../models/Product");
+
+const dayjs = require("dayjs");
+const utc = require("dayjs/plugin/utc");
+const timezone = require("dayjs/plugin/timezone");
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 const nodemailer = require("nodemailer");
 
 // ✅ Lấy thông tin người dùng
@@ -146,5 +157,118 @@ exports.updateByAdmin = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Lỗi khi cập nhật người dùng" });
+  }
+};
+
+exports.getDashboardStatistics = async (req, res) => {
+  try {
+    const countCustomers = await User.countDocuments({ role: "customer" });
+    const countCategories = await Category.countDocuments();
+    const countProducts = await Product.countDocuments();
+    const countPrice = await Order.aggregate([
+      { $match: { isPaid: true } },
+      { $group: { _id: null, totalRevenue: { $sum: "$totalPrice" } } },
+    ]);
+    const totalRevenue = countPrice[0]?.totalRevenue || 0;
+
+    res.json({
+      success: true,
+      totalCustomers: countCustomers,
+      totalCategories: countCategories,
+      totalProducts: countProducts,
+      totalRevenue: totalRevenue,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi khi đếm số lượng khách hàng" });
+  }
+};
+
+exports.getDailyRevenueReport = async (req, res) => {
+  try {
+     const dateParam =
+       req.query.date || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM-DD");
+
+     const startOfDay = dayjs(dateParam).startOf("day").toDate();
+     const endOfDay = dayjs(dateParam).endOf("day").toDate();
+
+    console.log("BE nhận:", req.query.date);
+   console.log(
+     "Start (VN):",
+     dayjs(startOfDay).tz("Asia/Ho_Chi_Minh").format()
+   );
+   console.log("End (VN):", dayjs(endOfDay).tz("Asia/Ho_Chi_Minh").format());
+
+
+
+    // 🔹 Lấy toàn bộ đơn hàng trong ngày, có populate user
+    const orders = await Order.find({
+      createdAt: { $gte: startOfDay, $lte: endOfDay },
+    })
+      .populate("userId", "name email phone")
+      .sort({ createdAt: -1 });
+
+    // ✅ Thống kê tổng quan
+    const totalOrders = orders.length;
+    const paidOrders = orders.filter((o) => o.isPaid).length;
+    const unpaidOrders = totalOrders - paidOrders;
+    const totalRevenue = orders
+      .filter((o) => o.isPaid)
+      .reduce((sum, o) => sum + o.totalPrice, 0);
+
+    // ✅ Gom thống kê theo phương thức thanh toán
+    const paymentSummary = {};
+    for (const o of orders) {
+      const method = o.paymentMethod || "Unknown";
+      if (!paymentSummary[method]) {
+        paymentSummary[method] = { total: 0, count: 0 };
+      }
+      if (o.isPaid) paymentSummary[method].total += o.totalPrice;
+      paymentSummary[method].count += 1;
+    }
+
+    // ✅ Gom theo trạng thái đơn hàng
+    const statusSummary = {};
+    for (const o of orders) {
+      const status = o.status || "Unknown";
+      if (!statusSummary[status]) statusSummary[status] = 0;
+      statusSummary[status]++;
+    }
+
+    // ✅ Dữ liệu chi tiết cho bảng frontend
+    const orderDetails = orders.map((o) => ({
+      id: o._id,
+      customerName: o.userId?.name || "Khách vãng lai",
+      customerEmail: o.userId?.email,
+      paymentMethod: o.paymentMethod,
+      totalItems: o.items.reduce((sum, item) => sum + item.quantity, 0),
+      totalPrice: o.totalPrice,
+      discount: o.discountAmount || 0,
+      isPaid: o.isPaid,
+      isDelivered: o.isDelivered,
+      status: o.status,
+      createdAt: o.createdAt,
+      paidAt: o.paidAt,
+    }));
+
+    // ✅ Trả về kết quả
+    res.json({
+      success: true,
+      date: dateParam,
+      totalOrders,
+      paidOrders,
+      unpaidOrders,
+      totalRevenue,
+      paymentSummary,
+      statusSummary,
+      orders: orderDetails,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy báo cáo doanh thu hàng ngày",
+      error: error.message,
+    });
   }
 };
