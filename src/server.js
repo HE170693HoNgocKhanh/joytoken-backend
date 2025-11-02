@@ -5,6 +5,9 @@ const dotenv = require("dotenv");
 const cookieParser = require("cookie-parser");
 const session = require("express-session");
 const path = require("path");
+const { Server } = require("socket.io");
+const http = require("http");
+const chatSocket = require("./socket/chatSocket");
 
 const db = require("./config/db");
 const routes = require("./routers"); // ✅ import router tổng
@@ -14,26 +17,39 @@ dotenv.config({
 });
 
 // ✅ Kết nối MongoDB
-db.connect();
 
 const app = express();
 
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // React frontend
+    methods: ["GET", "POST"],
+  },
+});
+db.connect();
+chatSocket(io);
+
 // ✅ Middleware
-app.use(cors({
-  origin: true,
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  })
+);
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan("dev"));
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || "mysecret",
-  resave: false,
-  saveUninitialized: true,
-  cookie: { secure: false },
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "mysecret",
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false },
+  })
+);
 
 // ✅ Route test
 app.get("/", (req, res) => {
@@ -44,6 +60,6 @@ app.get("/", (req, res) => {
 app.use("/api", routes);
 
 const port = process.env.PORT || 8080;
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`✅ Server listening on port ${port}`);
 });
