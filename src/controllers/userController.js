@@ -131,3 +131,20 @@ exports.getAllUser = async (req, res) => {
     res.status(500).json({ message: "Lỗi khi lấy danh sách người dùng" });
   }
 };
+
+exports.updateByAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { role, emailVerified } = req.body;
+    // console.log(id);
+    const user = await User.findByIdAndUpdate(
+      id,
+      { role, emailVerified },
+      { new: true }
+    );
+    res.json(user);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi khi cập nhật người dùng" });
+  }
+};

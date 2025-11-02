@@ -8,6 +8,7 @@ const {
   updateProfile,
   uploadAvatar,
   getAllUser,
+  updateByAdmin
 } = require("../controllers/userController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const multer = require("multer");
@@ -28,7 +29,18 @@ const upload = multer({ storage });
 router.get("/get-all", verifyToken, requireRole(["admin"]), getAllUser);
 router.get("/profile", verifyToken, getProfile);
 router.put("/profile", verifyToken, updateProfile);
-router.post("/profile/avatar", verifyToken, upload.single("avatar"), uploadAvatar);
+router.put("/update-by-admin/:id",
+  verifyToken,
+  requireRole(["admin"]),
+  updateByAdmin
+);
+
+router.post(
+  "/profile/avatar",
+  verifyToken,
+  upload.single("avatar"),
+  uploadAvatar
+);
 
 router.post("/change-email", verifyToken, changeEmailRequest);
 router.post("/verify-email", verifyToken, verifyEmailOtp);
