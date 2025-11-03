@@ -144,6 +144,7 @@ exports.createProduct = async (req, res) => {
       }
     }
 
+    // 🔹 Tạo sản phẩm
     const product = await Product.create({
       name,
       description,
@@ -157,19 +158,56 @@ exports.createProduct = async (req, res) => {
       seller: req.user.id,
     });
 
+    // 🔹 Tạo record Inventory cho product (import)
+    const Inventory = require("../models/Inventory");
+
+    // Nếu product có variants, tạo record import cho từng variant
+    if (variants.length > 0) {
+      for (const v of variants) {
+        const qty = v.countInStock || 0;
+        if (qty > 0) {
+          await Inventory.create({
+            productId: product._id,
+            variant: { _id: v._id, size: v.size, color: v.color },
+            type: "import",
+            quantity: qty,
+            note: "Nhập kho khi tạo sản phẩm",
+            date: new Date(),
+            stockAfter: qty,
+            orderId: null,
+          });
+        }
+      }
+    } else {
+      // Nếu không có variant, tạo 1 record import tổng
+      const qty = countInStock || 0;
+      if (qty > 0) {
+        await Inventory.create({
+          productId: product._id,
+          type: "import",
+          quantity: qty,
+          note: "Nhập kho khi tạo sản phẩm",
+          date: new Date(),
+          stockAfter: qty,
+          orderId: null,
+        });
+      }
+    }
+
     const populatedProduct = await Product.findById(product._id)
       .populate("category", "name")
       .populate("seller", "name email");
 
     res.status(201).json({
       success: true,
-      message: "Tạo sản phẩm thành công",
+      message: "Tạo sản phẩm thành công và nhập kho",
       data: populatedProduct,
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 // ========================
 // ✏️ UPDATE PRODUCT
