@@ -1,40 +1,86 @@
+const { default: mongoose } = require("mongoose");
 const Inventory = require("../models/Inventory");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 
 // --- 1. Nhập kho ---
+// controllers/inventoryController.js
 exports.importStock = async (req, res) => {
   try {
-    const { productId, quantity, note } = req.body;
-    if (!productId || !quantity)
-      return res.status(400).json({ message: "Thiếu dữ liệu" });
+    const { productId, variantId, quantity, note } = req.body;
 
+    if (!productId || !quantity)
+      return res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
+
+    // ✅ Tìm sản phẩm
     const product = await Product.findById(productId);
     if (!product)
       return res.status(404).json({ message: "Sản phẩm không tồn tại" });
 
-    product.stockQuantity += quantity;
+    let stockAfter = 0;
+    let variantInfo = null;
+
+    // ✅ Nếu có variant → cập nhật đúng variant đó
+    if (variantId) {
+      const variantIndex = product.variants.findIndex(
+        (v) => v._id.toString() === variantId
+      );
+
+      if (variantIndex === -1)
+        return res
+          .status(404)
+          .json({ message: "Không tìm thấy phiên bản sản phẩm" });
+
+      // Cập nhật tồn kho của variant
+      product.variants[variantIndex].countInStock += quantity;
+      stockAfter = product.variants[variantIndex].countInStock;
+
+      // Lưu thông tin variant vào log
+      variantInfo = {
+        _id: product.variants[variantIndex]._id,
+        size: product.variants[variantIndex].size,
+        color: product.variants[variantIndex].color,
+      };
+    }
+
+    // ✅ Cập nhật tổng tồn kho sản phẩm
+    product.countInStock += quantity;
+
+    // Lưu thay đổi vào DB
     await product.save();
 
+    // ✅ Ghi lịch sử kho
     const inventory = new Inventory({
       productId,
+      variant: variantInfo,
       type: "import",
       quantity,
       note,
-      stockAfter: product.stockQuantity,
+      stockAfter,
     });
+
     await inventory.save();
 
-    res.status(201).json({ message: "Nhập kho thành công", inventory });
+    res.status(201).json({
+      message: "Nhập kho thành công",
+      inventory,
+      updatedStock: {
+        productStock: product.countInStock,
+        variantStock: stockAfter || null,
+      },
+    });
   } catch (err) {
+    console.error("❌ Import stock error:", err);
     res.status(500).json({ message: err.message });
   }
 };
 
 // --- 2. Xuất kho ---
+// controllers/inventoryController.js
 exports.exportStock = async (req, res) => {
   try {
-    const { productId, quantity, note } = req.body;
+    const { productId, variantId, quantity, note } = req.body;
+
     if (!productId || !quantity)
       return res.status(400).json({ message: "Thiếu dữ liệu" });
 
@@ -42,23 +88,66 @@ exports.exportStock = async (req, res) => {
     if (!product)
       return res.status(404).json({ message: "Sản phẩm không tồn tại" });
 
-    if (product.stockQuantity < quantity)
-      return res.status(400).json({ message: "Số lượng tồn kho không đủ" });
+    let stockAfter;
+    let variantInfo = null;
 
-    product.stockQuantity -= quantity;
-    await product.save();
+    // ✅ Nếu có variantId => trừ kho variant
+    if (variantId) {
+      const variant = product.variants.id(variantId);
+      if (!variant)
+        return res.status(404).json({ message: "Biến thể không tồn tại" });
 
+      if (variant.countInStock < quantity)
+        return res
+          .status(400)
+          .json({ message: "Số lượng tồn kho của biến thể không đủ" });
+
+      variant.countInStock -= quantity;
+      await product.save();
+
+      // ✅ Cập nhật tồn kho tổng
+      product.countInStock = product.variants.reduce(
+        (sum, v) => sum + v.countInStock,
+        0
+      );
+      await product.save();
+
+      stockAfter = variant.countInStock;
+
+      // Chuẩn hóa thông tin variant để ghi log inventory
+      variantInfo = {
+        _id: variant._id,
+        size: variant.size,
+        color: variant.color,
+      };
+    } else {
+      // ✅ Không có variant => trừ kho tổng
+      if (product.countInStock < quantity)
+        return res.status(400).json({ message: "Số lượng tồn kho không đủ" });
+
+      product.countInStock -= quantity;
+      await product.save();
+
+      stockAfter = product.countInStock;
+    }
+
+    // ✅ Lưu Inventory với thông tin variant chi tiết (nếu có)
     const inventory = new Inventory({
       productId,
+      variant: variantInfo,
       type: "export",
       quantity,
       note,
-      stockAfter: product.stockQuantity,
+      stockAfter,
     });
     await inventory.save();
 
-    res.status(201).json({ message: "Xuất kho thành công", inventory });
+    res.status(201).json({
+      message: "Xuất kho thành công",
+      inventory,
+    });
   } catch (err) {
+    console.error("Export Stock Error:", err);
     res.status(500).json({ message: err.message });
   }
 };
