@@ -2,6 +2,7 @@ const Order = require("../models/Order");
 const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
 const payOSService = require("../services/payosService");
+
 // ==================== TẠO ORDER MỚI ====================
 exports.createOrder = async (req, res) => {
   try {
@@ -17,6 +18,9 @@ exports.createOrder = async (req, res) => {
       cancelUrl,
     } = req.body;
 
+    console.log("🛒 Tạo order với dữ liệu:", req.body);
+
+    // ✅ 1. Kiểm tra giỏ hàng
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
@@ -24,8 +28,8 @@ exports.createOrder = async (req, res) => {
       });
     }
 
-    // ✅ Kiểm tra tồn kho từng sản phẩm
-    for (let item of items) {
+    // ✅ 2. Kiểm tra tồn kho
+    for (const item of items) {
       const product = await Product.findById(item.productId);
       if (!product) {
         return res.status(404).json({
@@ -42,22 +46,19 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // ✅ TÍNH LẠI GIÁ TRỊ VÀ ÁP DỤNG GIẢM GIÁ (nếu đủ điều kiện)
+    // ✅ 3. Áp dụng giảm giá nếu có
     let adjustedItemsPrice = itemsPrice;
     let discountAmount = 0;
 
-    // Lấy tất cả đơn hàng cũ của user
     const previousOrders = await Order.find({ userId: req.user.id });
-
-    // Nếu khách đã từng mua và lần này mua ≥ 3 sản phẩm
     if (previousOrders.length > 0 && items.length >= 3) {
       discountAmount = adjustedItemsPrice * 0.1; // giảm 10%
-      adjustedItemsPrice = adjustedItemsPrice - discountAmount;
+      adjustedItemsPrice -= discountAmount;
     }
 
     const finalTotalPrice = adjustedItemsPrice + taxPrice + shippingPrice;
 
-    // ✅ Tạo order mới
+    // ✅ 4. Tạo order
     const order = await Order.create({
       userId: req.user.id,
       items,
@@ -71,19 +72,19 @@ exports.createOrder = async (req, res) => {
       discountApplied: discountAmount > 0,
     });
 
-    // ✅ Cập nhật tồn kho
-    for (let item of items) {
+    // ✅ 5. Cập nhật tồn kho
+    for (const item of items) {
       await Product.findByIdAndUpdate(item.productId, {
         $inc: { countInStock: -item.quantity },
       });
     }
 
-    // ✅ Populate dữ liệu để trả về frontend
+    // ✅ 6. Populate dữ liệu trả về
     const populatedOrder = await Order.findById(order._id)
       .populate("userId", "name email")
       .populate("items.productId", "name image");
 
-    let response = {
+    const response = {
       success: true,
       message:
         discountAmount > 0
@@ -94,7 +95,7 @@ exports.createOrder = async (req, res) => {
       discountAmount,
     };
 
-    // ✅ Nếu payment method là PayOS, tạo payment link
+    // ✅ 7. Nếu chọn thanh toán PayOS → tạo link thanh toán
     if (paymentMethod === "PayOS") {
       try {
         const payOSItems = items.map((item) => ({
@@ -103,10 +104,12 @@ exports.createOrder = async (req, res) => {
           price: Math.round(item.price),
         }));
 
+        const shortDesc = `Thanh toan DH #${order._id.toString().slice(-6)}`;
+
         const paymentData = {
           orderId: order._id.toString(),
           amount: Math.round(finalTotalPrice),
-          description: `Thanh toán đơn hàng #${order._id}`,
+          description: shortDesc,
           buyerName: shippingAddress.fullName,
           buyerEmail: req.user.email,
           buyerPhone: shippingAddress.phone,
@@ -123,24 +126,25 @@ exports.createOrder = async (req, res) => {
           qrCode: paymentResult.data.qrCode,
           orderCode: paymentResult.orderCode,
         };
-      } catch (payOSError) {
-        // Nếu tạo PayOS thất bại, hoàn lại tồn kho
-        for (let item of items) {
+      } catch (err) {
+        console.error("❌ Lỗi PayOS:", err);
+
+        // ✅ Hoàn lại tồn kho nếu PayOS thất bại
+        for (const item of items) {
           await Product.findByIdAndUpdate(item.productId, {
             $inc: { countInStock: item.quantity },
           });
         }
 
-        // Xóa order
         await Order.findByIdAndDelete(order._id);
-
         return res.status(500).json({
           success: false,
-          message: `Tạo payment link thất bại: ${payOSError.message}`,
+          message: `Tạo payment link thất bại: ${err.message}`,
         });
       }
     }
 
+    // ✅ 8. Trả về response cuối cùng
     res.status(201).json(response);
   } catch (error) {
     console.error("❌ Lỗi tạo đơn hàng:", error);
