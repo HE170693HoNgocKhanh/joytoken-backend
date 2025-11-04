@@ -30,10 +30,13 @@ const orderSchema = new mongoose.Schema(
         image: String,
         variant: {
           _id: { type: mongoose.Schema.Types.ObjectId, ref: "Variant" },
+          size: String,
+          color: String,
           name: String,
           image: String,
           price: Number,
           stock: Number,
+          countInStock: Number,
         },
         personalization: String,
       },

@@ -3,6 +3,67 @@ const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
 const payOSService = require("../services/payosService");
 
+// Helper function để enrich variant data từ Product
+const enrichVariantFromProduct = async (item) => {
+  if (!item.variant || !item.variant._id) return item.variant;
+
+  // Handle productId có thể là ObjectId hoặc object đã populate
+  const productId = item.productId?._id 
+    ? item.productId._id.toString() 
+    : item.productId?.toString 
+    ? item.productId.toString() 
+    : item.productId;
+
+  const product = await Product.findById(productId);
+  if (!product || !product.variants || product.variants.length === 0) {
+    return item.variant;
+  }
+
+  const variantFromProduct = product.variants.find(
+    (v) => v._id.toString() === item.variant._id.toString()
+  );
+
+  if (variantFromProduct) {
+    return {
+      _id: variantFromProduct._id,
+      size: variantFromProduct.size || item.variant.size,
+      color: variantFromProduct.color || item.variant.color,
+      price: variantFromProduct.price || item.variant.price,
+      countInStock: variantFromProduct.countInStock,
+      image: variantFromProduct.image || item.variant.image,
+    };
+  }
+
+  return item.variant;
+};
+
+// Helper function để enrich order items với variant data
+const enrichOrderItems = async (order) => {
+  if (!order || !order.items || order.items.length === 0) return order;
+
+  // Convert mongoose document to plain object if needed
+  const orderObj = order.toObject ? order.toObject() : order;
+
+  const enrichedItems = await Promise.all(
+    orderObj.items.map(async (item) => {
+      if (!item.variant || !item.variant._id) {
+        return item;
+      }
+
+      const enrichedVariant = await enrichVariantFromProduct(item);
+      return {
+        ...item,
+        variant: enrichedVariant,
+      };
+    })
+  );
+
+  return {
+    ...orderObj,
+    items: enrichedItems,
+  };
+};
+
 // ==================== TẠO ORDER ====================
 exports.createOrder = async (req, res) => {
   try {
@@ -55,7 +116,41 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // 2️⃣ Áp dụng giảm giá
+    // 2️⃣ Enrich variant data từ product trước khi lưu order
+    const enrichedItems = await Promise.all(
+      items.map(async (item) => {
+        if (!item.variant || !item.variant._id) {
+          return item;
+        }
+
+        const product = await Product.findById(item.productId);
+        if (!product || !product.variants || product.variants.length === 0) {
+          return item;
+        }
+
+        const variantFromProduct = product.variants.find(
+          (v) => v._id.toString() === item.variant._id.toString()
+        );
+
+        if (variantFromProduct) {
+          return {
+            ...item,
+            variant: {
+              _id: variantFromProduct._id,
+              size: variantFromProduct.size || item.variant.size,
+              color: variantFromProduct.color || item.variant.color,
+              price: variantFromProduct.price || item.variant.price,
+              countInStock: variantFromProduct.countInStock,
+              image: variantFromProduct.image || item.variant.image,
+            },
+          };
+        }
+
+        return item;
+      })
+    );
+
+    // 3️⃣ Áp dụng giảm giá
     let discountAmount = 0;
     let adjustedItemsPrice = itemsPrice;
     const previousOrders = await Order.find({ userId: req.user.id });
@@ -65,10 +160,10 @@ exports.createOrder = async (req, res) => {
     }
     const finalTotalPrice = adjustedItemsPrice + taxPrice + shippingPrice;
 
-    // 3️⃣ Tạo order
+    // 4️⃣ Tạo order với variant đã được enrich
     const order = await Order.create({
       userId: req.user.id,
-      items,
+      items: enrichedItems,
       shippingAddress,
       paymentMethod,
       itemsPrice: adjustedItemsPrice,
@@ -79,9 +174,9 @@ exports.createOrder = async (req, res) => {
       discountApplied: discountAmount > 0,
     });
 
-    // 4️⃣ Nếu COD: trừ kho ngay
+    // 5️⃣ Nếu COD: trừ kho ngay
     if (paymentMethod === "COD") {
-      for (const item of items) {
+      for (const item of enrichedItems) {
         const product = await Product.findById(item.productId);
         if (!product) continue;
 
@@ -117,23 +212,28 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    // 5️⃣ Nếu Online Payment → tạo link PayOS
+    // 6️⃣ Nếu Online Payment → tạo link PayOS
+    let orderData = await Order.findById(order._id)
+      .populate("userId", "name email")
+      .populate("items.productId", "name image");
+    
+    // Enrich variant data cho response
+    orderData = await enrichOrderItems(orderData);
+
     let response = {
       success: true,
       message:
         discountAmount > 0
           ? "Đặt hàng thành công — Voucher 10% đã được áp dụng!"
           : "Đặt hàng thành công",
-      data: await Order.findById(order._id)
-        .populate("userId", "name email")
-        .populate("items.productId", "name image"),
+      data: orderData,
       discountApplied: discountAmount > 0,
       discountAmount,
     };
 
     if (paymentMethod === "PayOS") {
       try {
-        const payOSItems = items.map((i) => ({
+        const payOSItems = enrichedItems.map((i) => ({
           name: i.name,
           quantity: i.quantity,
           price: Math.round(i.price),
@@ -193,6 +293,24 @@ exports.updateOrderToPaid = async (req, res) => {
         });
     }
 
+    // Kiểm tra xem đơn hàng đã được thanh toán chưa để tránh trừ kho hai lần
+    if (order.isPaid) {
+      let populatedOrder = await Order.findById(order._id)
+        .populate("userId", "name email")
+        .populate("items.productId", "name image");
+      
+      // Enrich variant data
+      populatedOrder = await enrichOrderItems(populatedOrder);
+      
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message: "Đơn hàng đã được thanh toán trước đó",
+          data: populatedOrder,
+        });
+    }
+
     order.isPaid = true;
     order.paidAt = new Date();
     order.paymentResult = {
@@ -239,9 +357,12 @@ exports.updateOrderToPaid = async (req, res) => {
       });
     }
 
-    const populatedOrder = await Order.findById(order._id)
+    let populatedOrder = await Order.findById(order._id)
       .populate("userId", "name email")
       .populate("items.productId", "name image");
+
+    // Enrich variant data
+    populatedOrder = await enrichOrderItems(populatedOrder);
 
     res
       .status(200)
@@ -278,13 +399,16 @@ exports.updateOrderStatus = async (req, res) => {
       updateData.deliveredAt = new Date();
     }
 
-    const updatedOrder = await Order.findByIdAndUpdate(
+    let updatedOrder = await Order.findByIdAndUpdate(
       req.params.id,
       updateData,
       { new: true }
     )
       .populate("userId", "name email")
       .populate("items.productId", "name image");
+
+    // Enrich variant data
+    updatedOrder = await enrichOrderItems(updatedOrder);
 
     res
       .status(200)
@@ -301,7 +425,7 @@ exports.updateOrderStatus = async (req, res) => {
 // ==================== LẤY ORDER THEO ID ====================
 exports.getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id)
+    let order = await Order.findById(req.params.id)
       .populate("userId", "name email")
       .populate("items.productId", "name image price");
     if (!order)
@@ -321,6 +445,9 @@ exports.getOrderById = async (req, res) => {
         });
     }
 
+    // Enrich variant data
+    order = await enrichOrderItems(order);
+
     res.status(200).json({ success: true, data: order });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -333,7 +460,13 @@ exports.getMyOrders = async (req, res) => {
     const orders = await Order.find({ userId: req.user.id })
       .populate("items.productId", "name image")
       .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: orders });
+    
+    // Enrich variant data cho tất cả orders
+    const enrichedOrders = await Promise.all(
+      orders.map(order => enrichOrderItems(order))
+    );
+    
+    res.status(200).json({ success: true, data: enrichedOrders });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -357,11 +490,16 @@ exports.getAllOrders = async (req, res) => {
       .limit(limit);
     const total = await Order.countDocuments(filter);
 
+    // Enrich variant data cho tất cả orders
+    const enrichedOrders = await Promise.all(
+      orders.map(order => enrichOrderItems(order))
+    );
+
     res
       .status(200)
       .json({
         success: true,
-        data: orders,
+        data: enrichedOrders,
         pagination: { page, limit, total, pages: Math.ceil(total / limit) },
       });
   } catch (error) {
@@ -408,11 +546,15 @@ exports.cancelOrder = async (req, res) => {
       await product.save();
     }
 
-    const updatedOrder = await Order.findByIdAndUpdate(
+    let updatedOrder = await Order.findByIdAndUpdate(
       req.params.id,
       { status: "Cancelled" },
       { new: true }
     );
+    
+    // Enrich variant data
+    updatedOrder = await enrichOrderItems(updatedOrder);
+    
     res
       .status(200)
       .json({
