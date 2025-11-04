@@ -10,6 +10,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@payos/node": "^2.0.3",
     "api-query-params": "^5.4.0",
     "axios": "^1.8.3",
     "bcrypt": "^5.1.1",

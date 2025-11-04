@@ -49,11 +49,11 @@ const orderSchema = new mongoose.Schema(
     paymentMethod: {
       type: String,
       required: true,
-      enum: ["COD", "Credit Card", "PayPal", "Bank Transfer"],
+      enum: ["COD", "Credit Card", "PayPal", "Bank Transfer", "PayOS"],
     },
     paymentResult: {
       transactionId: String,
-      provider: String, // PayPal | Stripe | Momo
+      provider: String, // PayPal | Stripe | Momo | PayOS
       status: String,
       paidAt: Date,
       email: String,

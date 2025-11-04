@@ -1,7 +1,7 @@
 const Order = require("../models/Order");
 const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
-
+const payOSService = require("../services/payosService");
 // ==================== TẠO ORDER MỚI ====================
 exports.createOrder = async (req, res) => {
   try {
@@ -13,6 +13,8 @@ exports.createOrder = async (req, res) => {
       taxPrice,
       shippingPrice,
       totalPrice,
+      returnUrl,
+      cancelUrl,
     } = req.body;
 
     if (!items || items.length === 0) {
@@ -81,7 +83,7 @@ exports.createOrder = async (req, res) => {
       .populate("userId", "name email")
       .populate("items.productId", "name image");
 
-    res.status(201).json({
+    let response = {
       success: true,
       message:
         discountAmount > 0
@@ -90,7 +92,56 @@ exports.createOrder = async (req, res) => {
       data: populatedOrder,
       discountApplied: discountAmount > 0,
       discountAmount,
-    });
+    };
+
+    // ✅ Nếu payment method là PayOS, tạo payment link
+    if (paymentMethod === "PayOS") {
+      try {
+        const payOSItems = items.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: Math.round(item.price),
+        }));
+
+        const paymentData = {
+          orderId: order._id.toString(),
+          amount: Math.round(finalTotalPrice),
+          description: `Thanh toán đơn hàng #${order._id}`,
+          buyerName: shippingAddress.fullName,
+          buyerEmail: req.user.email,
+          buyerPhone: shippingAddress.phone,
+          buyerAddress: `${shippingAddress.address}, ${shippingAddress.city}`,
+          items: payOSItems,
+          returnUrl: returnUrl || `${process.env.FRONTEND_URL}/payment/success`,
+          cancelUrl: cancelUrl || `${process.env.FRONTEND_URL}/payment/cancel`,
+        };
+
+        const paymentResult = await payOSService.createPaymentLink(paymentData);
+
+        response.payOS = {
+          checkoutUrl: paymentResult.data.checkoutUrl,
+          qrCode: paymentResult.data.qrCode,
+          orderCode: paymentResult.orderCode,
+        };
+      } catch (payOSError) {
+        // Nếu tạo PayOS thất bại, hoàn lại tồn kho
+        for (let item of items) {
+          await Product.findByIdAndUpdate(item.productId, {
+            $inc: { countInStock: item.quantity },
+          });
+        }
+
+        // Xóa order
+        await Order.findByIdAndDelete(order._id);
+
+        return res.status(500).json({
+          success: false,
+          message: `Tạo payment link thất bại: ${payOSError.message}`,
+        });
+      }
+    }
+
+    res.status(201).json(response);
   } catch (error) {
     console.error("❌ Lỗi tạo đơn hàng:", error);
     res.status(500).json({
