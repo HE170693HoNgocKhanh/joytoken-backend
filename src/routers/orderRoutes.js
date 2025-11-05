@@ -23,4 +23,6 @@ router.put('/:id/pay', verifyToken, updateOrderToPaid);
 router.get('/', verifyToken, requireRole(['admin', 'staff']), getAllOrders);
 router.put('/:id/status', verifyToken, requireRole(['admin', 'staff']), updateOrderStatus);
 
+
+
 module.exports = router;

@@ -6,12 +6,12 @@ exports.getAllCategories = async (req, res) => {
     const categories = await Category.find({});
     res.status(200).json({
       success: true,
-      data: categories
+      data: categories,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -23,17 +23,17 @@ exports.getCategoryById = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy danh mục"
+        message: "Không tìm thấy danh mục",
       });
     }
     res.status(200).json({
       success: true,
-      data: category
+      data: category,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -46,7 +46,7 @@ exports.createCategory = async (req, res) => {
     if (!name) {
       return res.status(400).json({
         success: false,
-        message: "Tên danh mục là bắt buộc"
+        message: "Tên danh mục là bắt buộc",
       });
     }
 
@@ -54,25 +54,25 @@ exports.createCategory = async (req, res) => {
     if (existingCategory) {
       return res.status(400).json({
         success: false,
-        message: "Tên danh mục đã tồn tại"
+        message: "Tên danh mục đã tồn tại",
       });
     }
 
     const category = await Category.create({
       name,
       description,
-      image
+      image,
     });
 
     res.status(201).json({
       success: true,
       message: "Tạo danh mục thành công",
-      data: category
+      data: category,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -86,7 +86,7 @@ exports.updateCategory = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy danh mục"
+        message: "Không tìm thấy danh mục",
       });
     }
 
@@ -96,7 +96,7 @@ exports.updateCategory = async (req, res) => {
       if (existingCategory) {
         return res.status(400).json({
           success: false,
-          message: "Tên danh mục đã tồn tại"
+          message: "Tên danh mục đã tồn tại",
         });
       }
     }
@@ -110,12 +110,12 @@ exports.updateCategory = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "Cập nhật danh mục thành công",
-      data: updatedCategory
+      data: updatedCategory,
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
@@ -127,24 +127,20 @@ exports.deleteCategory = async (req, res) => {
     if (!category) {
       return res.status(404).json({
         success: false,
-        message: "Không tìm thấy danh mục"
+        message: "Không tìm thấy danh mục",
       });
     }
 
-    await Category.findByIdAndUpdate(
-      req.params.id,
-      { isActive: false },
-      { new: true }
-    );
+    await Category.findByIdAndDelete(req.params.id);
 
     res.status(200).json({
       success: true,
-      message: "Xóa danh mục thành công"
+      message: "Xóa danh mục thành công",
     });
   } catch (error) {
     res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };

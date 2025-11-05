@@ -11,6 +11,7 @@ const {
   updateByAdmin,
   getDashboardStatistics,
   getDailyRevenueReport,
+  deleteUser,
 } = require("../controllers/userController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const multer = require("multer");
@@ -61,5 +62,7 @@ router.post(
 
 router.post("/change-email", verifyToken, changeEmailRequest);
 router.post("/verify-email", verifyToken, verifyEmailOtp);
+
+router.delete("/:id", verifyToken, requireRole(["admin"]), deleteUser);
 
 module.exports = router;

@@ -186,20 +186,18 @@ exports.getDashboardStatistics = async (req, res) => {
 
 exports.getDailyRevenueReport = async (req, res) => {
   try {
-     const dateParam =
-       req.query.date || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM-DD");
+    const dateParam =
+      req.query.date || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM-DD");
 
-     const startOfDay = dayjs(dateParam).startOf("day").toDate();
-     const endOfDay = dayjs(dateParam).endOf("day").toDate();
+    const startOfDay = dayjs(dateParam).startOf("day").toDate();
+    const endOfDay = dayjs(dateParam).endOf("day").toDate();
 
     console.log("BE nhận:", req.query.date);
-   console.log(
-     "Start (VN):",
-     dayjs(startOfDay).tz("Asia/Ho_Chi_Minh").format()
-   );
-   console.log("End (VN):", dayjs(endOfDay).tz("Asia/Ho_Chi_Minh").format());
-
-
+    console.log(
+      "Start (VN):",
+      dayjs(startOfDay).tz("Asia/Ho_Chi_Minh").format()
+    );
+    console.log("End (VN):", dayjs(endOfDay).tz("Asia/Ho_Chi_Minh").format());
 
     // 🔹 Lấy toàn bộ đơn hàng trong ngày, có populate user
     const orders = await Order.find({
@@ -269,6 +267,30 @@ exports.getDailyRevenueReport = async (req, res) => {
       success: false,
       message: "Lỗi khi lấy báo cáo doanh thu hàng ngày",
       error: error.message,
+    });
+  }
+};
+
+exports.deleteUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy người dùng",
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: "Xoa nguoi dung thanh cong",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };

@@ -8,10 +8,10 @@ const enrichVariantFromProduct = async (item) => {
   if (!item.variant || !item.variant._id) return item.variant;
 
   // Handle productId có thể là ObjectId hoặc object đã populate
-  const productId = item.productId?._id 
-    ? item.productId._id.toString() 
-    : item.productId?.toString 
-    ? item.productId.toString() 
+  const productId = item.productId?._id
+    ? item.productId._id.toString()
+    : item.productId?.toString
+    ? item.productId.toString()
     : item.productId;
 
   const product = await Product.findById(productId);
@@ -88,12 +88,10 @@ exports.createOrder = async (req, res) => {
     for (const item of items) {
       const product = await Product.findById(item.productId);
       if (!product)
-        return res
-          .status(404)
-          .json({
-            success: false,
-            message: `Sản phẩm ${item.name} không tồn tại`,
-          });
+        return res.status(404).json({
+          success: false,
+          message: `Sản phẩm ${item.name} không tồn tại`,
+        });
 
       let variantStock = null;
       if (item.variant && product.variants && product.variants.length > 0) {
@@ -107,12 +105,10 @@ exports.createOrder = async (req, res) => {
         (variantStock !== null && variantStock < item.quantity) ||
         (variantStock === null && product.countInStock < item.quantity)
       ) {
-        return res
-          .status(400)
-          .json({
-            success: false,
-            message: `Sản phẩm ${product.name} không đủ số lượng`,
-          });
+        return res.status(400).json({
+          success: false,
+          message: `Sản phẩm ${product.name} không đủ số lượng`,
+        });
       }
     }
 
@@ -216,7 +212,7 @@ exports.createOrder = async (req, res) => {
     let orderData = await Order.findById(order._id)
       .populate("userId", "name email")
       .populate("items.productId", "name image");
-    
+
     // Enrich variant data cho response
     orderData = await enrichOrderItems(orderData);
 
@@ -260,12 +256,10 @@ exports.createOrder = async (req, res) => {
       } catch (err) {
         console.error("❌ Lỗi PayOS:", err);
         await Order.findByIdAndDelete(order._id);
-        return res
-          .status(500)
-          .json({
-            success: false,
-            message: `Tạo payment link thất bại: ${err.message}`,
-          });
+        return res.status(500).json({
+          success: false,
+          message: `Tạo payment link thất bại: ${err.message}`,
+        });
       }
     }
 
@@ -285,12 +279,10 @@ exports.updateOrderToPaid = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy đơn hàng" });
 
     if (order.paymentMethod === "COD") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Đơn hàng COD không cần update thanh toán",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Đơn hàng COD không cần update thanh toán",
+      });
     }
 
     // Kiểm tra xem đơn hàng đã được thanh toán chưa để tránh trừ kho hai lần
@@ -298,17 +290,15 @@ exports.updateOrderToPaid = async (req, res) => {
       let populatedOrder = await Order.findById(order._id)
         .populate("userId", "name email")
         .populate("items.productId", "name image");
-      
+
       // Enrich variant data
       populatedOrder = await enrichOrderItems(populatedOrder);
-      
-      return res
-        .status(200)
-        .json({
-          success: true,
-          message: "Đơn hàng đã được thanh toán trước đó",
-          data: populatedOrder,
-        });
+
+      return res.status(200).json({
+        success: true,
+        message: "Đơn hàng đã được thanh toán trước đó",
+        data: populatedOrder,
+      });
     }
 
     order.isPaid = true;
@@ -364,13 +354,11 @@ exports.updateOrderToPaid = async (req, res) => {
     // Enrich variant data
     populatedOrder = await enrichOrderItems(populatedOrder);
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Thanh toán thành công và cập nhật kho",
-        data: populatedOrder,
-      });
+    res.status(200).json({
+      success: true,
+      message: "Thanh toán thành công và cập nhật kho",
+      data: populatedOrder,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: error.message });
@@ -378,45 +366,44 @@ exports.updateOrderToPaid = async (req, res) => {
 };
 
 // ==================== CẬP NHẬT TRẠNG THÁI ====================
+// controllers/orderController.js
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    const validStatuses = [
-      "Pending",
-      "Processing",
-      "Shipped",
-      "Delivered",
-      "Cancelled",
-    ];
-    if (!validStatuses.includes(status))
-      return res
-        .status(400)
-        .json({ success: false, message: "Trạng thái không hợp lệ" });
+    const { status, methodPayment } = req.body;
+    const order = await Order.findById(req.params.id);
 
-    const updateData = { status };
-    if (status === "Delivered") {
-      updateData.isDelivered = true;
-      updateData.deliveredAt = new Date();
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy đơn hàng" });
     }
 
-    let updatedOrder = await Order.findByIdAndUpdate(
-      req.params.id,
-      updateData,
-      { new: true }
-    )
-      .populate("userId", "name email")
-      .populate("items.productId", "name image");
+    // === CASES ===
+    // 1️⃣ Online payment (PayOS, MoMo, v.v.)
+    // Nếu khách thanh toán online, tiền đã trừ rồi, nên đánh dấu đã thanh toán ngay khi tạo đơn
+    if (methodPayment !== "COD") {
+      order.isPaid = true;
+      if (!order.paidAt) order.paidAt = new Date(); // ghi nhận thời gian thanh toán
+    }
 
-    // Enrich variant data
-    updatedOrder = await enrichOrderItems(updatedOrder);
+    // 2️⃣ COD (Cash on Delivery)
+    // Với COD, khách chỉ thanh toán khi đơn được giao (Delivered)
+    if (methodPayment === "COD" && status === "Delivered") {
+      order.isPaid = true;
+      order.paidAt = new Date(); // ghi nhận thời gian khách thanh toán khi nhận hàng
+    }
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Cập nhật trạng thái thành công",
-        data: updatedOrder,
-      });
+    // === CẬP NHẬT TRẠNG THÁI ===
+    // Chỉ cập nhật status
+    order.status = status;
+
+    const updatedOrder = await order.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật trạng thái thành công",
+      data: updatedOrder,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -437,12 +424,10 @@ exports.getOrderById = async (req, res) => {
       order.userId._id.toString() !== req.user.id &&
       req.user.role !== "admin"
     ) {
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Bạn không có quyền xem đơn hàng này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền xem đơn hàng này",
+      });
     }
 
     // Enrich variant data
@@ -460,12 +445,12 @@ exports.getMyOrders = async (req, res) => {
     const orders = await Order.find({ userId: req.user.id })
       .populate("items.productId", "name image")
       .sort({ createdAt: -1 });
-    
+
     // Enrich variant data cho tất cả orders
     const enrichedOrders = await Promise.all(
-      orders.map(order => enrichOrderItems(order))
+      orders.map((order) => enrichOrderItems(order))
     );
-    
+
     res.status(200).json({ success: true, data: enrichedOrders });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -492,16 +477,14 @@ exports.getAllOrders = async (req, res) => {
 
     // Enrich variant data cho tất cả orders
     const enrichedOrders = await Promise.all(
-      orders.map(order => enrichOrderItems(order))
+      orders.map((order) => enrichOrderItems(order))
     );
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        data: enrichedOrders,
-        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-      });
+    res.status(200).json({
+      success: true,
+      data: enrichedOrders,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -517,19 +500,15 @@ exports.cancelOrder = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy đơn hàng" });
 
     if (order.userId.toString() !== req.user.id)
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Bạn không có quyền hủy đơn hàng này",
-        });
+      return res.status(403).json({
+        success: false,
+        message: "Bạn không có quyền hủy đơn hàng này",
+      });
     if (order.status !== "Pending")
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Không thể hủy đơn hàng đã được xử lý",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Không thể hủy đơn hàng đã được xử lý",
+      });
 
     for (let item of order.items) {
       const product = await Product.findById(item.productId);
@@ -551,17 +530,15 @@ exports.cancelOrder = async (req, res) => {
       { status: "Cancelled" },
       { new: true }
     );
-    
+
     // Enrich variant data
     updatedOrder = await enrichOrderItems(updatedOrder);
-    
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Hủy đơn hàng thành công",
-        data: updatedOrder,
-      });
+
+    res.status(200).json({
+      success: true,
+      message: "Hủy đơn hàng thành công",
+      data: updatedOrder,
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
