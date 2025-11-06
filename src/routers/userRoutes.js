@@ -12,21 +12,48 @@ const {
   getDashboardStatistics,
   getDailyRevenueReport,
   deleteUser,
+  getWishlist,
+  addToWishlist,
+  removeFromWishlist,
 } = require("../controllers/userController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const multer = require("multer");
 const path = require("path");
 
 //  Cấu hình multer để upload ảnh đại diện
+const fs = require("fs");
+const uploadsDir = path.join(__dirname, "../../uploads/avatars");
+
+// Tạo thư mục nếu chưa tồn tại
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/avatars");
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     cb(null, Date.now() + path.extname(file.originalname));
   },
 });
-const upload = multer({ storage });
+
+// File filter để chỉ chấp nhận ảnh
+const fileFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new Error("Chỉ có thể tải lên file ảnh!"), false);
+  }
+};
+
+const upload = multer({ 
+  storage,
+  fileFilter,
+  limits: {
+    fileSize: 2 * 1024 * 1024, // 2MB
+  },
+});
 
 // ✅ Routes
 router.get("/get-all", verifyToken, requireRole(["admin"]), getAllUser);
@@ -56,7 +83,20 @@ router.put(
 router.post(
   "/profile/avatar",
   verifyToken,
-  upload.single("avatar"),
+  (req, res, next) => {
+    upload.single("avatar")(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return res.status(400).json({ message: "Ảnh quá lớn! Tối đa 2MB." });
+          }
+          return res.status(400).json({ message: err.message });
+        }
+        return res.status(400).json({ message: err.message });
+      }
+      next();
+    });
+  },
   uploadAvatar
 );
 
@@ -64,5 +104,10 @@ router.post("/change-email", verifyToken, changeEmailRequest);
 router.post("/verify-email", verifyToken, verifyEmailOtp);
 
 router.delete("/:id", verifyToken, requireRole(["admin"]), deleteUser);
+
+// Wishlist
+router.get('/wishlist', verifyToken, getWishlist);
+router.post('/wishlist/:productId', verifyToken, addToWishlist);
+router.delete('/wishlist/:productId', verifyToken, removeFromWishlist);
 
 module.exports = router;

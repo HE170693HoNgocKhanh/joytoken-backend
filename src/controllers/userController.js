@@ -15,48 +15,141 @@ const nodemailer = require("nodemailer");
 // ✅ Lấy thông tin người dùng
 exports.getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
-    if (!user) return res.status(404).json({ message: "Không tìm thấy user" });
+    console.log("📥 Get profile request");
+    console.log("👤 User from token:", req.user?._id);
+    
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Chưa đăng nhập" });
+    }
+    
+    const user = await User.findById(req.user._id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy user" });
+    }
+    
+    console.log("✅ Profile retrieved:", user._id);
     res.json(user);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Lỗi khi lấy thông tin user" });
+    console.error("❌ Error getting profile:", error);
+    res.status(500).json({ message: "Lỗi khi lấy thông tin user", error: error.message });
   }
 };
 
 // ✅ Cập nhật thông tin cơ bản
 exports.updateProfile = async (req, res) => {
   try {
+    console.log("📝 Update profile request:", req.body);
+    console.log("👤 User ID:", req.user?._id);
+    
     const { name, address, phone } = req.body;
+    
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Chưa đăng nhập" });
+    }
+    
+    // Validate dữ liệu đầu vào
+    if (!name || name.trim() === "") {
+      return res.status(400).json({ message: "Họ và tên không được để trống" });
+    }
+
+    const updateData = {};
+    if (name) updateData.name = name.trim();
+    if (phone !== undefined) {
+      updateData.phone = phone && typeof phone === 'string' ? phone.trim() : (phone || "");
+    }
+    if (address !== undefined) {
+      updateData.address = address && typeof address === 'string' ? address.trim() : (address || "");
+    }
+
+    console.log("💾 Updating user with data:", updateData);
+
     const user = await User.findByIdAndUpdate(
-      req.user.id,
-      { name, address, phone },
-      { new: true }
+      req.user._id,
+      updateData,
+      { new: true, runValidators: true }
     ).select("-password");
 
+    if (!user) {
+      console.log("❌ User not found after update");
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    console.log("✅ Profile updated successfully:", user._id);
+    console.log("📋 Updated user data:", {
+      name: user.name,
+      phone: user.phone,
+      address: user.address
+    });
+    
     res.json({ message: "Cập nhật thành công", user });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Lỗi khi cập nhật thông tin" });
+    console.error("❌ Error updating profile:", error);
+    
+    // Xử lý lỗi validation từ Mongoose
+    if (error.name === 'ValidationError') {
+      const validationErrors = Object.values(error.errors).map(e => e.message).join(', ');
+      return res.status(400).json({ 
+        message: "Dữ liệu không hợp lệ", 
+        error: validationErrors 
+      });
+    }
+    
+    res.status(500).json({ message: "Lỗi khi cập nhật thông tin", error: error.message });
   }
 };
 
 // ✅ Upload avatar
 exports.uploadAvatar = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ message: "Chưa chọn ảnh" });
+    console.log("📤 Upload avatar request received");
+    console.log("File info:", {
+      filename: req.file?.filename,
+      originalname: req.file?.originalname,
+      mimetype: req.file?.mimetype,
+      size: req.file?.size,
+      path: req.file?.path
+    });
+    console.log("User ID:", req.user?._id);
 
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Chưa đăng nhập" });
+    }
+
+    if (!req.file) {
+      console.log("❌ No file in request");
+      return res.status(400).json({ message: "Chưa chọn ảnh" });
+    }
+
+    // Tạo URL cho ảnh
     const imageUrl = `/uploads/avatars/${req.file.filename}`;
+    console.log("💾 Saving avatar URL:", imageUrl);
+    console.log("📁 File saved at:", req.file.path);
+
+    // Cập nhật avatar trong database
     const user = await User.findByIdAndUpdate(
-      req.user.id,
+      req.user._id,
       { avatar: imageUrl },
-      { new: true }
+      { new: true, runValidators: true }
     ).select("-password");
 
-    res.json({ message: "Cập nhật ảnh đại diện thành công", user });
+    if (!user) {
+      console.log("❌ User not found");
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    console.log("✅ Avatar updated successfully for user:", user._id);
+    console.log("🖼️ Avatar URL in DB:", user.avatar);
+    
+    res.json({ 
+      message: "Cập nhật ảnh đại diện thành công", 
+      user 
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Lỗi khi tải ảnh" });
+    console.error("❌ Error uploading avatar:", error);
+    res.status(500).json({ 
+      message: "Lỗi khi tải ảnh", 
+      error: error.message 
+    });
   }
 };
 
@@ -68,7 +161,7 @@ exports.changeEmailRequest = async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString(); // OTP 6 số dạng string
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "Không tìm thấy user" });
 
     user.tempEmail = newEmail;
@@ -112,7 +205,7 @@ exports.verifyEmailOtp = async (req, res) => {
     const { otp } = req.body;
     if (!otp) return res.status(400).json({ message: "Thiếu mã OTP" });
 
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "Không tìm thấy user" });
 
     // So sánh OTP và kiểm tra hạn
@@ -130,6 +223,92 @@ exports.verifyEmailOtp = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Lỗi xác thực email" });
+  }
+};
+
+// ===== Wishlist APIs =====
+exports.getWishlist = async (req, res) => {
+  try {
+    console.log("📥 Get wishlist request");
+    console.log("👤 User ID:", req.user?._id);
+    
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Chưa đăng nhập' });
+    }
+    
+    const user = await User.findById(req.user._id).populate('wishlist', 'name image price');
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+    
+    console.log("✅ Wishlist retrieved:", user.wishlist?.length || 0, "items");
+    res.json({ success: true, data: user.wishlist || [] });
+  } catch (error) {
+    console.error("❌ Error getting wishlist:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.addToWishlist = async (req, res) => {
+  try {
+    console.log("➕ Add to wishlist request");
+    console.log("👤 User ID:", req.user?._id);
+    console.log("📦 Product ID:", req.params.productId);
+    
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Chưa đăng nhập' });
+    }
+    
+    const { productId } = req.params;
+    const product = await Product.findById(productId).select('_id');
+    if (!product) {
+      return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $addToSet: { wishlist: productId } },
+      { new: true }
+    ).populate('wishlist', 'name image price');
+
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+
+    console.log("✅ Product added to wishlist. Total items:", user.wishlist?.length || 0);
+    res.json({ success: true, data: user.wishlist });
+  } catch (error) {
+    console.error("❌ Error adding to wishlist:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.removeFromWishlist = async (req, res) => {
+  try {
+    console.log("➖ Remove from wishlist request");
+    console.log("👤 User ID:", req.user?._id);
+    console.log("📦 Product ID:", req.params.productId);
+    
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Chưa đăng nhập' });
+    }
+    
+    const { productId } = req.params;
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      { $pull: { wishlist: productId } },
+      { new: true }
+    ).populate('wishlist', 'name image price');
+
+    if (!user) {
+      return res.status(404).json({ message: 'Không tìm thấy user' });
+    }
+
+    console.log("✅ Product removed from wishlist. Total items:", user.wishlist?.length || 0);
+    res.json({ success: true, data: user.wishlist });
+  } catch (error) {
+    console.error("❌ Error removing from wishlist:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 

@@ -74,6 +74,8 @@ exports.createOrder = async (req, res) => {
       itemsPrice,
       taxPrice,
       shippingPrice,
+      discountAmount: frontendDiscountAmount = 0,
+      voucherInfo,
       returnUrl,
       cancelUrl,
     } = req.body;
@@ -146,15 +148,14 @@ exports.createOrder = async (req, res) => {
       })
     );
 
-    // 3️⃣ Áp dụng giảm giá
+    // 3️⃣ Áp dụng giảm giá từ frontend (voucher 5%, tối đa 10,000₫)
     let discountAmount = 0;
-    let adjustedItemsPrice = itemsPrice;
-    const previousOrders = await Order.find({ userId: req.user.id });
-    if (previousOrders.length > 0 && items.length >= 3) {
-      discountAmount = adjustedItemsPrice * 0.1;
-      adjustedItemsPrice -= discountAmount;
+    if (frontendDiscountAmount > 0) {
+      // Giới hạn tối đa 10,000₫ và đảm bảo không âm
+      discountAmount = Math.min(Math.max(0, frontendDiscountAmount), 10000);
     }
-    const finalTotalPrice = adjustedItemsPrice + taxPrice + shippingPrice;
+    const adjustedItemsPrice = itemsPrice;
+    const finalTotalPrice = adjustedItemsPrice + taxPrice + shippingPrice - discountAmount;
 
     // 4️⃣ Tạo order với variant đã được enrich
     const order = await Order.create({
@@ -162,10 +163,10 @@ exports.createOrder = async (req, res) => {
       items: enrichedItems,
       shippingAddress,
       paymentMethod,
-      itemsPrice: adjustedItemsPrice,
+      itemsPrice: adjustedItemsPrice, // Giá gốc trước giảm giá
       taxPrice,
       shippingPrice,
-      totalPrice: finalTotalPrice,
+      totalPrice: finalTotalPrice, // Tổng sau khi trừ discount
       discountAmount,
       discountApplied: discountAmount > 0,
     });
@@ -220,7 +221,7 @@ exports.createOrder = async (req, res) => {
       success: true,
       message:
         discountAmount > 0
-          ? "Đặt hàng thành công — Voucher 10% đã được áp dụng!"
+          ? "Đặt hàng thành công — Voucher 5% đã được áp dụng!"
           : "Đặt hàng thành công",
       data: orderData,
       discountApplied: discountAmount > 0,
