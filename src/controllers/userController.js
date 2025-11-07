@@ -80,7 +80,7 @@ exports.updateProfile = async (req, res) => {
       phone: user.phone,
       address: user.address
     });
-    
+
     res.json({ message: "Cập nhật thành công", user });
   } catch (error) {
     console.error("❌ Error updating profile:", error);

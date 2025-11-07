@@ -130,6 +130,44 @@ exports.createProduct = async (req, res) => {
       }
     }
 
+    // Parse events (đã gộp tags vào) - LUÔN parse, kể cả mảng rỗng
+    console.log("📦 CREATE PRODUCT - Raw body events:", req.body.events);
+    
+    let events = [];
+    if (req.body.events !== undefined) {
+      try {
+        events = typeof req.body.events === 'string' 
+          ? JSON.parse(req.body.events) 
+          : (req.body.events || []);
+        if (!Array.isArray(events)) events = [];
+      } catch (e) {
+        console.error("Error parsing events:", e);
+        events = [];
+      }
+    }
+    console.log("✅ Parsed events (đã gộp tags):", events);
+
+    // Parse flags - xử lý cả string "true"/"false" và boolean
+    console.log("📦 CREATE PRODUCT - Raw body flags:", {
+      isBestSeller: req.body.isBestSeller,
+      isNew: req.body.isNew,
+      isBackInStock: req.body.isBackInStock,
+      label: req.body.label
+    });
+    
+    const isBestSeller = req.body.isBestSeller !== undefined
+      ? (req.body.isBestSeller === 'true' || req.body.isBestSeller === true)
+      : false;
+    const isNew = req.body.isNew !== undefined
+      ? (req.body.isNew === 'true' || req.body.isNew === true)
+      : false;
+    const isBackInStock = req.body.isBackInStock !== undefined
+      ? (req.body.isBackInStock === 'true' || req.body.isBackInStock === true)
+      : false;
+    const label = req.body.label && req.body.label.trim() !== '' ? req.body.label : null;
+    
+    console.log("✅ Parsed flags:", { isBestSeller, isNew, isBackInStock, label });
+
     // 📸 Upload ảnh (nếu có)
     let image = null;
     let images = [];
@@ -145,7 +183,7 @@ exports.createProduct = async (req, res) => {
     }
 
     // 🔹 Tạo sản phẩm
-    const product = await Product.create({
+    const productData = {
       name,
       description,
       price,
@@ -156,6 +194,31 @@ exports.createProduct = async (req, res) => {
       variants,
       personalize: false,
       seller: req.user.id,
+      events: events,
+      tags: [], // Không dùng tags nữa, đã gộp vào events
+      isBestSeller: isBestSeller,
+      isNew: isNew,
+      isBackInStock: isBackInStock,
+      label: label,
+    };
+    
+    console.log("💾 Saving product with data:", {
+      events: productData.events,
+      isBestSeller: productData.isBestSeller,
+      isNew: productData.isNew,
+      isBackInStock: productData.isBackInStock,
+      label: productData.label
+    });
+    
+    const product = await Product.create(productData);
+    
+    console.log("✅ Product created successfully:", {
+      _id: product._id,
+      events: product.events,
+      isBestSeller: product.isBestSeller,
+      isNew: product.isNew,
+      isBackInStock: product.isBackInStock,
+      label: product.label
     });
 
     // 🔹 Tạo record Inventory cho product (import)
@@ -249,7 +312,7 @@ exports.updateProduct = async (req, res) => {
     }
 
     // 🔧 Parse variants
-    let variants = [];
+    let variants = product.variants || [];
     if (req.body.variants) {
       if (Array.isArray(req.body.variants)) {
         variants = req.body.variants.map((v) => JSON.parse(v));
@@ -257,6 +320,50 @@ exports.updateProduct = async (req, res) => {
         variants = [JSON.parse(req.body.variants)];
       }
     }
+
+    // Parse events (đã gộp tags vào) - LUÔN parse, kể cả mảng rỗng
+    console.log("📦 UPDATE PRODUCT - Raw body events:", req.body.events);
+    console.log("📦 UPDATE PRODUCT - Current product events:", product.events);
+    
+    // Gộp tags cũ vào events nếu có
+    let currentEvents = [...(product.events || []), ...(product.tags || [])];
+    
+    let events = currentEvents;
+    if (req.body.events !== undefined) {
+      try {
+        events = typeof req.body.events === 'string' 
+          ? JSON.parse(req.body.events) 
+          : (req.body.events || []);
+        if (!Array.isArray(events)) events = [];
+      } catch (e) {
+        console.error("Error parsing events:", e);
+        events = [];
+      }
+    }
+    console.log("✅ Parsed events (đã gộp tags):", events);
+
+    // Parse flags - xử lý cả string "true"/"false" và boolean
+    console.log("📦 UPDATE PRODUCT - Raw body flags:", {
+      isBestSeller: req.body.isBestSeller,
+      isNew: req.body.isNew,
+      isBackInStock: req.body.isBackInStock,
+      label: req.body.label
+    });
+    
+    const isBestSeller = req.body.isBestSeller !== undefined 
+      ? (req.body.isBestSeller === 'true' || req.body.isBestSeller === true)
+      : (product.isBestSeller || false);
+    const isNew = req.body.isNew !== undefined 
+      ? (req.body.isNew === 'true' || req.body.isNew === true)
+      : (product.isNew || false);
+    const isBackInStock = req.body.isBackInStock !== undefined 
+      ? (req.body.isBackInStock === 'true' || req.body.isBackInStock === true)
+      : (product.isBackInStock || false);
+    const label = req.body.label !== undefined 
+      ? (req.body.label && req.body.label.trim() !== '' ? req.body.label : null)
+      : product.label;
+    
+    console.log("✅ Parsed flags:", { isBestSeller, isNew, isBackInStock, label });
 
     // 📸 Upload ảnh mới (nếu có)
     let image = product.image;
@@ -273,24 +380,49 @@ exports.updateProduct = async (req, res) => {
       }
     }
 
+    const updateData = {
+      name,
+      description,
+      price,
+      category,
+      image,
+      images,
+      countInStock, // FE đã gửi tổng số lượng
+      variants,
+      personalize,
+      isActive,
+      events: events,
+      tags: [], // Không dùng tags nữa, đã gộp vào events
+      isBestSeller: isBestSeller,
+      isNew: isNew,
+      isBackInStock: isBackInStock,
+      label: label,
+    };
+    
+    console.log("💾 Updating product with data:", {
+      events: updateData.events,
+      isBestSeller: updateData.isBestSeller,
+      isNew: updateData.isNew,
+      isBackInStock: updateData.isBackInStock,
+      label: updateData.label
+    });
+    
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
-      {
-        name,
-        description,
-        price,
-        category,
-        image,
-        images,
-        countInStock, // FE đã gửi tổng số lượng
-        variants,
-        personalize,
-        isActive,
-      },
+      updateData,
       { new: true, runValidators: true }
     )
       .populate("category", "name")
       .populate("seller", "name email");
+    
+    console.log("✅ Product updated successfully:", {
+      _id: updatedProduct._id,
+      events: updatedProduct.events,
+      isBestSeller: updatedProduct.isBestSeller,
+      isNew: updatedProduct.isNew,
+      isBackInStock: updatedProduct.isBackInStock,
+      label: updatedProduct.label
+    });
 
     res.status(200).json({
       success: true,
