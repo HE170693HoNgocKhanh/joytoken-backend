@@ -51,6 +51,9 @@ app.use(
   })
 );
 
+// ✅ Serve static files (uploads)
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
 // ✅ Route test
 app.get("/", (req, res) => {
   res.send("🚀 Server running successfully!");

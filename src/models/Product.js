@@ -59,6 +59,23 @@ const productSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Tags for filtering
+  isBestSeller: {
+    type: Boolean,
+    default: false
+  },
+  isNew: {
+    type: Boolean,
+    default: false
+  },
+  isBackInStock: {
+    type: Boolean,
+    default: false
+  },
+  label: {
+    type: String, // e.g., "Sale", "New", "Hot"
+    default: null
   }
 }, {
   timestamps: true

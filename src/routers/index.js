@@ -7,6 +7,9 @@ const reviewRoutes = require("./reviewRoutes");
 const userRoutes = require("./userRoutes");
 const conversationRoutes = require("./conversationRoutes");
 const chatBotRoutes = require("./chatBotRoutes");
+const inventoryRoutes = require("./inventoryRoutes");
+const exchangeRoutes = require("./exchangeRoutes");
+const notificationRoutes = require("./notificationRoutes");
 
 const router = express.Router();
 
@@ -18,5 +21,8 @@ router.use("/reviews", reviewRoutes);
 router.use("/users", userRoutes);
 router.use("/conversations", conversationRoutes);
 router.use("/chatbot", chatBotRoutes);
+router.use("/inventories", inventoryRoutes);
+router.use("/exchanges", exchangeRoutes);
+router.use("/notifications", notificationRoutes);
 
 module.exports = router;

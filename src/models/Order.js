@@ -30,10 +30,13 @@ const orderSchema = new mongoose.Schema(
         image: String,
         variant: {
           _id: { type: mongoose.Schema.Types.ObjectId, ref: "Variant" },
+          size: String,
+          color: String,
           name: String,
           image: String,
           price: Number,
           stock: Number,
+          countInStock: Number,
         },
         personalization: String,
       },
@@ -49,11 +52,11 @@ const orderSchema = new mongoose.Schema(
     paymentMethod: {
       type: String,
       required: true,
-      enum: ["COD", "Credit Card", "PayPal", "Bank Transfer"],
+      enum: ["COD", "Credit Card", "PayPal", "Bank Transfer", "PayOS"],
     },
     paymentResult: {
       transactionId: String,
-      provider: String, // PayPal | Stripe | Momo
+      provider: String, // PayPal | Stripe | Momo | PayOS
       status: String,
       paidAt: Date,
       email: String,
