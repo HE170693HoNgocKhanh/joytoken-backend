@@ -10,6 +10,7 @@ const chatBotRoutes = require("./chatBotRoutes");
 const inventoryRoutes = require("./inventoryRoutes");
 const exchangeRoutes = require("./exchangeRoutes");
 const notificationRoutes = require("./notificationRoutes");
+const trackingRoutes = require("./trackingRoutes");
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.use("/chatbot", chatBotRoutes);
 router.use("/inventories", inventoryRoutes);
 router.use("/exchanges", exchangeRoutes);
 router.use("/notifications", notificationRoutes);
+router.use("/tracking", trackingRoutes);
 
 module.exports = router;

@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Category = require("../models/Category");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const Inventory = require("../models/Inventory");
 
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
@@ -445,6 +446,347 @@ exports.getDailyRevenueReport = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Lỗi khi lấy báo cáo doanh thu hàng ngày",
+      error: error.message,
+    });
+  }
+};
+
+// 📊 Lấy doanh thu theo tháng
+exports.getMonthlyRevenueReport = async (req, res) => {
+  try {
+    const monthParam = req.query.month || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM");
+    const [year, month] = monthParam.split("-");
+
+    const startOfMonth = dayjs(`${year}-${month}-01`).tz("Asia/Ho_Chi_Minh").startOf("month").toDate();
+    const endOfMonth = dayjs(`${year}-${month}-01`).tz("Asia/Ho_Chi_Minh").endOf("month").toDate();
+
+    // Lấy tất cả đơn hàng trong tháng
+    const orders = await Order.find({
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+    })
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 });
+
+    // Thống kê tổng quan
+    const totalOrders = orders.length;
+    const paidOrders = orders.filter((o) => o.isPaid).length;
+    const unpaidOrders = totalOrders - paidOrders;
+    const totalRevenue = orders
+      .filter((o) => o.isPaid)
+      .reduce((sum, o) => sum + o.totalPrice, 0);
+
+    // Doanh thu theo từng ngày trong tháng
+    const dailyRevenue = {};
+    orders
+      .filter((o) => o.isPaid)
+      .forEach((order) => {
+        const day = dayjs(order.createdAt).tz("Asia/Ho_Chi_Minh").format("YYYY-MM-DD");
+        if (!dailyRevenue[day]) {
+          dailyRevenue[day] = { revenue: 0, orders: 0 };
+        }
+        dailyRevenue[day].revenue += order.totalPrice;
+        dailyRevenue[day].orders += 1;
+      });
+
+    // Chuyển đổi thành array cho biểu đồ
+    const daysInMonth = dayjs(`${year}-${month}-01`).daysInMonth();
+    const dailyRevenueArray = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = dayjs(`${year}-${month}-${String(day).padStart(2, "0")}`).format("YYYY-MM-DD");
+      dailyRevenueArray.push({
+        date: dateStr,
+        day: day,
+        revenue: dailyRevenue[dateStr]?.revenue || 0,
+        orders: dailyRevenue[dateStr]?.orders || 0,
+      });
+    }
+
+    res.json({
+      success: true,
+      month: monthParam,
+      totalOrders,
+      paidOrders,
+      unpaidOrders,
+      totalRevenue,
+      dailyRevenue: dailyRevenueArray,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy báo cáo doanh thu hàng tháng",
+      error: error.message,
+    });
+  }
+};
+
+// 📈 Lấy dữ liệu biểu đồ doanh thu (theo ngày trong tháng hoặc theo tháng trong năm)
+exports.getRevenueChartData = async (req, res) => {
+  try {
+    const type = req.query.type || "monthly"; // "daily" hoặc "monthly"
+    const year = req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year();
+    const month = req.query.month || dayjs().tz("Asia/Ho_Chi_Minh").month() + 1;
+
+    if (type === "daily") {
+      // Doanh thu theo ngày trong tháng
+      const startOfMonth = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("month")
+        .toDate();
+      const endOfMonth = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("month")
+        .toDate();
+
+      const orders = await Order.find({
+        createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+        isPaid: true,
+      });
+
+      const dailyData = {};
+      orders.forEach((order) => {
+        const day = dayjs(order.createdAt).tz("Asia/Ho_Chi_Minh").date();
+        if (!dailyData[day]) {
+          dailyData[day] = { revenue: 0, orders: 0 };
+        }
+        dailyData[day].revenue += order.totalPrice;
+        dailyData[day].orders += 1;
+      });
+
+      const daysInMonth = dayjs(`${year}-${String(month).padStart(2, "0")}-01`).daysInMonth();
+      const chartData = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        chartData.push({
+          label: `Ngày ${day}`,
+          date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+          revenue: dailyData[day]?.revenue || 0,
+          orders: dailyData[day]?.orders || 0,
+        });
+      }
+
+      res.json({
+        success: true,
+        type: "daily",
+        year,
+        month,
+        data: chartData,
+      });
+    } else {
+      // Doanh thu theo tháng trong năm
+      const startOfYear = dayjs(`${year}-01-01`).tz("Asia/Ho_Chi_Minh").startOf("year").toDate();
+      const endOfYear = dayjs(`${year}-12-31`).tz("Asia/Ho_Chi_Minh").endOf("year").toDate();
+
+      const orders = await Order.find({
+        createdAt: { $gte: startOfYear, $lte: endOfYear },
+        isPaid: true,
+      });
+
+      const monthlyData = {};
+      orders.forEach((order) => {
+        const month = dayjs(order.createdAt).tz("Asia/Ho_Chi_Minh").month() + 1;
+        if (!monthlyData[month]) {
+          monthlyData[month] = { revenue: 0, orders: 0 };
+        }
+        monthlyData[month].revenue += order.totalPrice;
+        monthlyData[month].orders += 1;
+      });
+
+      const monthNames = [
+        "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
+        "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12",
+      ];
+
+      const chartData = [];
+      for (let month = 1; month <= 12; month++) {
+        chartData.push({
+          label: monthNames[month - 1],
+          month: month,
+          revenue: monthlyData[month]?.revenue || 0,
+          orders: monthlyData[month]?.orders || 0,
+        });
+      }
+
+      res.json({
+        success: true,
+        type: "monthly",
+        year,
+        data: chartData,
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy dữ liệu biểu đồ doanh thu",
+      error: error.message,
+    });
+  }
+};
+
+// 📊 Lấy dữ liệu biểu đồ tròn: Số lượng sản phẩm bán ra vs nhập vào
+exports.getInventoryChartData = async (req, res) => {
+  try {
+    const year = req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+
+    // Tính toán khoảng thời gian
+    let startDate, endDate;
+    if (month !== null && month !== undefined) {
+      // Theo tháng
+      startDate = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("month")
+        .toDate();
+      endDate = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("month")
+        .toDate();
+    } else {
+      // Theo năm
+      startDate = dayjs(`${year}-01-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("year")
+        .toDate();
+      endDate = dayjs(`${year}-12-31`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("year")
+        .toDate();
+    }
+
+    // 1. Tính tổng số lượng sản phẩm BÁN RA (từ Order)
+    const orders = await Order.find({
+      createdAt: { $gte: startDate, $lte: endDate },
+      isPaid: true, // Chỉ tính đơn đã thanh toán
+    });
+
+    let totalSoldQuantity = 0;
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        totalSoldQuantity += item.quantity || 0;
+      });
+    });
+
+    // 2. Tính tổng số lượng sản phẩm NHẬP VÀO (từ Inventory type="import")
+    const imports = await Inventory.find({
+      type: "import",
+      date: { $gte: startDate, $lte: endDate },
+    });
+
+    let totalImportedQuantity = 0;
+    imports.forEach((importItem) => {
+      totalImportedQuantity += importItem.quantity || 0;
+    });
+
+    // 3. Tính tồn kho hiện tại (tổng countInStock của tất cả sản phẩm)
+    const products = await Product.find({ isActive: true });
+    let currentStock = 0;
+    products.forEach((product) => {
+      currentStock += product.countInStock || 0;
+    });
+
+    res.json({
+      success: true,
+      year,
+      month: month || null,
+      data: {
+        sold: totalSoldQuantity,
+        imported: totalImportedQuantity,
+        currentStock: currentStock,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy dữ liệu biểu đồ tồn kho",
+      error: error.message,
+    });
+  }
+};
+
+// 👥 Lấy dữ liệu biểu đồ người dùng (theo ngày/tháng)
+exports.getUserChartData = async (req, res) => {
+  try {
+    const type = req.query.type || "monthly"; // "daily" | "monthly"
+    const year = parseInt(req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year(), 10);
+    const month = req.query.month ? parseInt(req.query.month, 10) : null;
+
+    if (type === "daily") {
+      const targetMonth = month || dayjs().tz("Asia/Ho_Chi_Minh").month() + 1;
+      const startOfMonth = dayjs(`${year}-${String(targetMonth).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("month")
+        .toDate();
+      const endOfMonth = dayjs(`${year}-${String(targetMonth).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("month")
+        .toDate();
+
+      const users = await User.find({
+        createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+      }).select("_id createdAt");
+
+      const daysInMonth = dayjs(`${year}-${String(targetMonth).padStart(2, "0")}-01`).daysInMonth();
+      const dailyData = Array.from({ length: daysInMonth }, (_, idx) => ({
+        label: `Ngày ${idx + 1}`,
+        date: `${year}-${String(targetMonth).padStart(2, "0")}-${String(idx + 1).padStart(2, "0")}`,
+        value: 0,
+      }));
+
+      users.forEach((user) => {
+        const day = dayjs(user.createdAt).tz("Asia/Ho_Chi_Minh").date();
+        const index = day - 1;
+        if (dailyData[index]) {
+          dailyData[index].value += 1;
+        }
+      });
+
+      return res.json({
+        success: true,
+        type: "daily",
+        year,
+        month: targetMonth,
+        data: dailyData,
+      });
+    }
+
+    // Mặc định: thống kê theo tháng trong năm
+    const startOfYear = dayjs(`${year}-01-01`).tz("Asia/Ho_Chi_Minh").startOf("year").toDate();
+    const endOfYear = dayjs(`${year}-12-31`).tz("Asia/Ho_Chi_Minh").endOf("year").toDate();
+
+    const users = await User.find({
+      createdAt: { $gte: startOfYear, $lte: endOfYear },
+    }).select("_id createdAt");
+
+    const monthNames = [
+      "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
+      "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12",
+    ];
+
+    const monthlyData = Array.from({ length: 12 }, (_, idx) => ({
+      label: monthNames[idx],
+      month: idx + 1,
+      value: 0,
+    }));
+
+    users.forEach((user) => {
+      const monthIndex = dayjs(user.createdAt).tz("Asia/Ho_Chi_Minh").month();
+      if (monthlyData[monthIndex]) {
+        monthlyData[monthIndex].value += 1;
+      }
+    });
+
+    return res.json({
+      success: true,
+      type: "monthly",
+      year,
+      data: monthlyData,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy dữ liệu biểu đồ người dùng",
       error: error.message,
     });
   }

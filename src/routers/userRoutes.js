@@ -11,6 +11,10 @@ const {
   updateByAdmin,
   getDashboardStatistics,
   getDailyRevenueReport,
+  getMonthlyRevenueReport,
+  getRevenueChartData,
+  getInventoryChartData,
+  getUserChartData,
   deleteUser,
   getWishlist,
   addToWishlist,
@@ -69,6 +73,34 @@ router.get(
   verifyToken,
   requireRole(["admin"]),
   getDailyRevenueReport
+);
+
+router.get(
+  "/revenue/monthly",
+  verifyToken,
+  requireRole(["admin"]),
+  getMonthlyRevenueReport
+);
+
+router.get(
+  "/revenue/chart",
+  verifyToken,
+  requireRole(["admin"]),
+  getRevenueChartData
+);
+
+router.get(
+  "/inventory/chart",
+  verifyToken,
+  requireRole(["admin"]),
+  getInventoryChartData
+);
+
+router.get(
+  "/chart/users",
+  verifyToken,
+  requireRole(["admin"]),
+  getUserChartData
 );
 
 router.get("/profile", verifyToken, getProfile);
