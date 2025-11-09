@@ -20,7 +20,7 @@ router.put('/:id/cancel', verifyToken, cancelOrder);
 router.put('/:id/pay', verifyToken, updateOrderToPaid);
 
 // Protected routes - Admin/Staff
-router.get('/', verifyToken, requireRole(['admin', 'staff']), getAllOrders);
+router.get('/', verifyToken, requireRole(['admin', 'staff, seller']), getAllOrders);
 router.put('/:id/status', verifyToken, requireRole(['admin', 'staff']), updateOrderStatus);
 
 

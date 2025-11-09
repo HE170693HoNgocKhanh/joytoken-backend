@@ -132,13 +132,14 @@ exports.createProduct = async (req, res) => {
 
     // Parse events (đã gộp tags vào) - LUÔN parse, kể cả mảng rỗng
     console.log("📦 CREATE PRODUCT - Raw body events:", req.body.events);
-    
+
     let events = [];
     if (req.body.events !== undefined) {
       try {
-        events = typeof req.body.events === 'string' 
-          ? JSON.parse(req.body.events) 
-          : (req.body.events || []);
+        events =
+          typeof req.body.events === "string"
+            ? JSON.parse(req.body.events)
+            : req.body.events || [];
         if (!Array.isArray(events)) events = [];
       } catch (e) {
         console.error("Error parsing events:", e);
@@ -152,21 +153,30 @@ exports.createProduct = async (req, res) => {
       isBestSeller: req.body.isBestSeller,
       isNew: req.body.isNew,
       isBackInStock: req.body.isBackInStock,
-      label: req.body.label
+      label: req.body.label,
     });
-    
-    const isBestSeller = req.body.isBestSeller !== undefined
-      ? (req.body.isBestSeller === 'true' || req.body.isBestSeller === true)
-      : false;
-    const isNew = req.body.isNew !== undefined
-      ? (req.body.isNew === 'true' || req.body.isNew === true)
-      : false;
-    const isBackInStock = req.body.isBackInStock !== undefined
-      ? (req.body.isBackInStock === 'true' || req.body.isBackInStock === true)
-      : false;
-    const label = req.body.label && req.body.label.trim() !== '' ? req.body.label : null;
-    
-    console.log("✅ Parsed flags:", { isBestSeller, isNew, isBackInStock, label });
+
+    const isBestSeller =
+      req.body.isBestSeller !== undefined
+        ? req.body.isBestSeller === "true" || req.body.isBestSeller === true
+        : false;
+    const isNew =
+      req.body.isNew !== undefined
+        ? req.body.isNew === "true" || req.body.isNew === true
+        : false;
+    const isBackInStock =
+      req.body.isBackInStock !== undefined
+        ? req.body.isBackInStock === "true" || req.body.isBackInStock === true
+        : false;
+    const label =
+      req.body.label && req.body.label.trim() !== "" ? req.body.label : null;
+
+    console.log("✅ Parsed flags:", {
+      isBestSeller,
+      isNew,
+      isBackInStock,
+      label,
+    });
 
     // 📸 Upload ảnh (nếu có)
     let image = null;
@@ -201,24 +211,24 @@ exports.createProduct = async (req, res) => {
       isBackInStock: isBackInStock,
       label: label,
     };
-    
+
     console.log("💾 Saving product with data:", {
       events: productData.events,
       isBestSeller: productData.isBestSeller,
       isNew: productData.isNew,
       isBackInStock: productData.isBackInStock,
-      label: productData.label
+      label: productData.label,
     });
-    
+
     const product = await Product.create(productData);
-    
+
     console.log("✅ Product created successfully:", {
       _id: product._id,
       events: product.events,
       isBestSeller: product.isBestSeller,
       isNew: product.isNew,
       isBackInStock: product.isBackInStock,
-      label: product.label
+      label: product.label,
     });
 
     // 🔹 Tạo record Inventory cho product (import)
@@ -271,7 +281,6 @@ exports.createProduct = async (req, res) => {
   }
 };
 
-
 // ========================
 // ✏️ UPDATE PRODUCT
 // ========================
@@ -286,7 +295,12 @@ exports.updateProduct = async (req, res) => {
     const sellerId = product.seller?.toString();
     const userId = req.user?.id;
     const role = req.user?.role;
-    if (sellerId && sellerId !== userId && role !== "admin")
+    if (
+      sellerId &&
+      sellerId !== userId &&
+      role !== "admin" &&
+      role !== "seller"
+    )
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền chỉnh sửa sản phẩm này",
@@ -324,16 +338,17 @@ exports.updateProduct = async (req, res) => {
     // Parse events (đã gộp tags vào) - LUÔN parse, kể cả mảng rỗng
     console.log("📦 UPDATE PRODUCT - Raw body events:", req.body.events);
     console.log("📦 UPDATE PRODUCT - Current product events:", product.events);
-    
+
     // Gộp tags cũ vào events nếu có
     let currentEvents = [...(product.events || []), ...(product.tags || [])];
-    
+
     let events = currentEvents;
     if (req.body.events !== undefined) {
       try {
-        events = typeof req.body.events === 'string' 
-          ? JSON.parse(req.body.events) 
-          : (req.body.events || []);
+        events =
+          typeof req.body.events === "string"
+            ? JSON.parse(req.body.events)
+            : req.body.events || [];
         if (!Array.isArray(events)) events = [];
       } catch (e) {
         console.error("Error parsing events:", e);
@@ -347,23 +362,34 @@ exports.updateProduct = async (req, res) => {
       isBestSeller: req.body.isBestSeller,
       isNew: req.body.isNew,
       isBackInStock: req.body.isBackInStock,
-      label: req.body.label
+      label: req.body.label,
     });
-    
-    const isBestSeller = req.body.isBestSeller !== undefined 
-      ? (req.body.isBestSeller === 'true' || req.body.isBestSeller === true)
-      : (product.isBestSeller || false);
-    const isNew = req.body.isNew !== undefined 
-      ? (req.body.isNew === 'true' || req.body.isNew === true)
-      : (product.isNew || false);
-    const isBackInStock = req.body.isBackInStock !== undefined 
-      ? (req.body.isBackInStock === 'true' || req.body.isBackInStock === true)
-      : (product.isBackInStock || false);
-    const label = req.body.label !== undefined 
-      ? (req.body.label && req.body.label.trim() !== '' ? req.body.label : null)
-      : product.label;
-    
-    console.log("✅ Parsed flags:", { isBestSeller, isNew, isBackInStock, label });
+
+    const isBestSeller =
+      req.body.isBestSeller !== undefined
+        ? req.body.isBestSeller === "true" || req.body.isBestSeller === true
+        : product.isBestSeller || false;
+    const isNew =
+      req.body.isNew !== undefined
+        ? req.body.isNew === "true" || req.body.isNew === true
+        : product.isNew || false;
+    const isBackInStock =
+      req.body.isBackInStock !== undefined
+        ? req.body.isBackInStock === "true" || req.body.isBackInStock === true
+        : product.isBackInStock || false;
+    const label =
+      req.body.label !== undefined
+        ? req.body.label && req.body.label.trim() !== ""
+          ? req.body.label
+          : null
+        : product.label;
+
+    console.log("✅ Parsed flags:", {
+      isBestSeller,
+      isNew,
+      isBackInStock,
+      label,
+    });
 
     // 📸 Upload ảnh mới (nếu có)
     let image = product.image;
@@ -398,15 +424,15 @@ exports.updateProduct = async (req, res) => {
       isBackInStock: isBackInStock,
       label: label,
     };
-    
+
     console.log("💾 Updating product with data:", {
       events: updateData.events,
       isBestSeller: updateData.isBestSeller,
       isNew: updateData.isNew,
       isBackInStock: updateData.isBackInStock,
-      label: updateData.label
+      label: updateData.label,
     });
-    
+
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
       updateData,
@@ -414,14 +440,14 @@ exports.updateProduct = async (req, res) => {
     )
       .populate("category", "name")
       .populate("seller", "name email");
-    
+
     console.log("✅ Product updated successfully:", {
       _id: updatedProduct._id,
       events: updatedProduct.events,
       isBestSeller: updatedProduct.isBestSeller,
       isNew: updatedProduct.isNew,
       isBackInStock: updatedProduct.isBackInStock,
-      label: updatedProduct.label
+      label: updatedProduct.label,
     });
 
     res.status(200).json({
@@ -433,7 +459,6 @@ exports.updateProduct = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 
 // ========================
 // 🗑️ DELETE PRODUCT (SOFT)
@@ -450,7 +475,12 @@ exports.deleteProduct = async (req, res) => {
     const userId = req.user?.id;
     const role = req.user?.role;
 
-    if (sellerId && sellerId !== userId && role !== "admin")
+    if (
+      sellerId &&
+      sellerId !== userId &&
+      role !== "admin" &&
+      role !== "seller"
+    )
       return res.status(403).json({
         success: false,
         message: "Bạn không có quyền xóa sản phẩm này",

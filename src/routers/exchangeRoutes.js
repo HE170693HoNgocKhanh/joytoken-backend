@@ -18,8 +18,13 @@ router.get("/:id", verifyToken, getExchangeById);
 router.put("/:id/cancel", verifyToken, cancelExchange);
 
 // Protected routes - Admin/Staff/Seller
-router.get("/", verifyToken, requireRole(["admin", "staff"]), getAllExchanges);
-router.put("/:id/status", verifyToken, requireRole(["admin", "staff"]), updateExchangeStatus);
+router.get("/", verifyToken, requireRole(["admin", "seller"]), getAllExchanges);
+router.put(
+  "/:id/status",
+  verifyToken,
+  requireRole(["admin", "seller"]),
+  updateExchangeStatus
+);
 
 module.exports = router;
 

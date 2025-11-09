@@ -51,7 +51,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const upload = multer({ 
+const upload = multer({
   storage,
   fileFilter,
   limits: {
@@ -64,21 +64,21 @@ router.get("/get-all", verifyToken, requireRole(["admin"]), getAllUser);
 router.get(
   "/statistics",
   verifyToken,
-  requireRole(["admin"]),
+  requireRole(["admin", "staff", "seller"]),
   getDashboardStatistics
 );
 
 router.get(
   "/revenue/daily",
   verifyToken,
-  requireRole(["admin"]),
+  requireRole(["admin", "staff", "seller"]),
   getDailyRevenueReport
 );
 
 router.get(
   "/revenue/monthly",
   verifyToken,
-  requireRole(["admin"]),
+  requireRole(["admin", "staff", "seller"]),
   getMonthlyRevenueReport
 );
 
@@ -120,7 +120,9 @@ router.post(
       if (err) {
         if (err instanceof multer.MulterError) {
           if (err.code === "LIMIT_FILE_SIZE") {
-            return res.status(400).json({ message: "Ảnh quá lớn! Tối đa 2MB." });
+            return res
+              .status(400)
+              .json({ message: "Ảnh quá lớn! Tối đa 2MB." });
           }
           return res.status(400).json({ message: err.message });
         }
@@ -138,8 +140,8 @@ router.post("/verify-email", verifyToken, verifyEmailOtp);
 router.delete("/:id", verifyToken, requireRole(["admin"]), deleteUser);
 
 // Wishlist
-router.get('/wishlist', verifyToken, getWishlist);
-router.post('/wishlist/:productId', verifyToken, addToWishlist);
-router.delete('/wishlist/:productId', verifyToken, removeFromWishlist);
+router.get("/wishlist", verifyToken, getWishlist);
+router.post("/wishlist/:productId", verifyToken, addToWishlist);
+router.delete("/wishlist/:productId", verifyToken, removeFromWishlist);
 
 module.exports = router;
