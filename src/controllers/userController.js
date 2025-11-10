@@ -2,6 +2,7 @@ const User = require("../models/User");
 const Category = require("../models/Category");
 const Order = require("../models/Order");
 const Product = require("../models/Product");
+const Inventory = require("../models/Inventory");
 
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
@@ -17,21 +18,23 @@ exports.getProfile = async (req, res) => {
   try {
     console.log("📥 Get profile request");
     console.log("👤 User from token:", req.user?._id);
-    
+
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     const user = await User.findById(req.user._id).select("-password");
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy user" });
     }
-    
+
     console.log("✅ Profile retrieved:", user._id);
     res.json(user);
   } catch (error) {
     console.error("❌ Error getting profile:", error);
-    res.status(500).json({ message: "Lỗi khi lấy thông tin user", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Lỗi khi lấy thông tin user", error: error.message });
   }
 };
 
@@ -40,13 +43,13 @@ exports.updateProfile = async (req, res) => {
   try {
     console.log("📝 Update profile request:", req.body);
     console.log("👤 User ID:", req.user?._id);
-    
+
     const { name, address, phone } = req.body;
-    
+
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     // Validate dữ liệu đầu vào
     if (!name || name.trim() === "") {
       return res.status(400).json({ message: "Họ và tên không được để trống" });
@@ -55,19 +58,20 @@ exports.updateProfile = async (req, res) => {
     const updateData = {};
     if (name) updateData.name = name.trim();
     if (phone !== undefined) {
-      updateData.phone = phone && typeof phone === 'string' ? phone.trim() : (phone || "");
+      updateData.phone =
+        phone && typeof phone === "string" ? phone.trim() : phone || "";
     }
     if (address !== undefined) {
-      updateData.address = address && typeof address === 'string' ? address.trim() : (address || "");
+      updateData.address =
+        address && typeof address === "string" ? address.trim() : address || "";
     }
 
     console.log("💾 Updating user with data:", updateData);
 
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      updateData,
-      { new: true, runValidators: true }
-    ).select("-password");
+    const user = await User.findByIdAndUpdate(req.user._id, updateData, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
 
     if (!user) {
       console.log("❌ User not found after update");
@@ -78,23 +82,27 @@ exports.updateProfile = async (req, res) => {
     console.log("📋 Updated user data:", {
       name: user.name,
       phone: user.phone,
-      address: user.address
+      address: user.address,
     });
-    
+
     res.json({ message: "Cập nhật thành công", user });
   } catch (error) {
     console.error("❌ Error updating profile:", error);
-    
+
     // Xử lý lỗi validation từ Mongoose
-    if (error.name === 'ValidationError') {
-      const validationErrors = Object.values(error.errors).map(e => e.message).join(', ');
-      return res.status(400).json({ 
-        message: "Dữ liệu không hợp lệ", 
-        error: validationErrors 
+    if (error.name === "ValidationError") {
+      const validationErrors = Object.values(error.errors)
+        .map((e) => e.message)
+        .join(", ");
+      return res.status(400).json({
+        message: "Dữ liệu không hợp lệ",
+        error: validationErrors,
       });
     }
-    
-    res.status(500).json({ message: "Lỗi khi cập nhật thông tin", error: error.message });
+
+    res
+      .status(500)
+      .json({ message: "Lỗi khi cập nhật thông tin", error: error.message });
   }
 };
 
@@ -107,7 +115,7 @@ exports.uploadAvatar = async (req, res) => {
       originalname: req.file?.originalname,
       mimetype: req.file?.mimetype,
       size: req.file?.size,
-      path: req.file?.path
+      path: req.file?.path,
     });
     console.log("User ID:", req.user?._id);
 
@@ -139,16 +147,16 @@ exports.uploadAvatar = async (req, res) => {
 
     console.log("✅ Avatar updated successfully for user:", user._id);
     console.log("🖼️ Avatar URL in DB:", user.avatar);
-    
-    res.json({ 
-      message: "Cập nhật ảnh đại diện thành công", 
-      user 
+
+    res.json({
+      message: "Cập nhật ảnh đại diện thành công",
+      user,
     });
   } catch (error) {
     console.error("❌ Error uploading avatar:", error);
-    res.status(500).json({ 
-      message: "Lỗi khi tải ảnh", 
-      error: error.message 
+    res.status(500).json({
+      message: "Lỗi khi tải ảnh",
+      error: error.message,
     });
   }
 };
@@ -231,16 +239,19 @@ exports.getWishlist = async (req, res) => {
   try {
     console.log("📥 Get wishlist request");
     console.log("👤 User ID:", req.user?._id);
-    
+
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Chưa đăng nhập' });
+      return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
-    const user = await User.findById(req.user._id).populate('wishlist', 'name image price');
+
+    const user = await User.findById(req.user._id).populate(
+      "wishlist",
+      "name image price"
+    );
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy user' });
+      return res.status(404).json({ message: "Không tìm thấy user" });
     }
-    
+
     console.log("✅ Wishlist retrieved:", user.wishlist?.length || 0, "items");
     res.json({ success: true, data: user.wishlist || [] });
   } catch (error) {
@@ -254,28 +265,31 @@ exports.addToWishlist = async (req, res) => {
     console.log("➕ Add to wishlist request");
     console.log("👤 User ID:", req.user?._id);
     console.log("📦 Product ID:", req.params.productId);
-    
+
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Chưa đăng nhập' });
+      return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     const { productId } = req.params;
-    const product = await Product.findById(productId).select('_id');
+    const product = await Product.findById(productId).select("_id");
     if (!product) {
-      return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+      return res.status(404).json({ message: "Sản phẩm không tồn tại" });
     }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $addToSet: { wishlist: productId } },
       { new: true }
-    ).populate('wishlist', 'name image price');
+    ).populate("wishlist", "name image price");
 
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy user' });
+      return res.status(404).json({ message: "Không tìm thấy user" });
     }
 
-    console.log("✅ Product added to wishlist. Total items:", user.wishlist?.length || 0);
+    console.log(
+      "✅ Product added to wishlist. Total items:",
+      user.wishlist?.length || 0
+    );
     res.json({ success: true, data: user.wishlist });
   } catch (error) {
     console.error("❌ Error adding to wishlist:", error);
@@ -288,23 +302,26 @@ exports.removeFromWishlist = async (req, res) => {
     console.log("➖ Remove from wishlist request");
     console.log("👤 User ID:", req.user?._id);
     console.log("📦 Product ID:", req.params.productId);
-    
+
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Chưa đăng nhập' });
+      return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     const { productId } = req.params;
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $pull: { wishlist: productId } },
       { new: true }
-    ).populate('wishlist', 'name image price');
+    ).populate("wishlist", "name image price");
 
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy user' });
+      return res.status(404).json({ message: "Không tìm thấy user" });
     }
 
-    console.log("✅ Product removed from wishlist. Total items:", user.wishlist?.length || 0);
+    console.log(
+      "✅ Product removed from wishlist. Total items:",
+      user.wishlist?.length || 0
+    );
     res.json({ success: true, data: user.wishlist });
   } catch (error) {
     console.error("❌ Error removing from wishlist:", error);
@@ -450,6 +467,405 @@ exports.getDailyRevenueReport = async (req, res) => {
   }
 };
 
+// 📊 Lấy doanh thu theo tháng
+exports.getMonthlyRevenueReport = async (req, res) => {
+  try {
+    const monthParam =
+      req.query.month || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM");
+    const [year, month] = monthParam.split("-");
+
+    const startOfMonth = dayjs(`${year}-${month}-01`)
+      .tz("Asia/Ho_Chi_Minh")
+      .startOf("month")
+      .toDate();
+    const endOfMonth = dayjs(`${year}-${month}-01`)
+      .tz("Asia/Ho_Chi_Minh")
+      .endOf("month")
+      .toDate();
+
+    // Lấy tất cả đơn hàng trong tháng
+    const orders = await Order.find({
+      createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+    })
+      .populate("userId", "name email")
+      .sort({ createdAt: -1 });
+
+    // Thống kê tổng quan
+    const totalOrders = orders.length;
+    const paidOrders = orders.filter((o) => o.isPaid).length;
+    const unpaidOrders = totalOrders - paidOrders;
+    const totalRevenue = orders
+      .filter((o) => o.isPaid)
+      .reduce((sum, o) => sum + o.totalPrice, 0);
+
+    // Doanh thu theo từng ngày trong tháng
+    const dailyRevenue = {};
+    orders
+      .filter((o) => o.isPaid)
+      .forEach((order) => {
+        const day = dayjs(order.createdAt)
+          .tz("Asia/Ho_Chi_Minh")
+          .format("YYYY-MM-DD");
+        if (!dailyRevenue[day]) {
+          dailyRevenue[day] = { revenue: 0, orders: 0 };
+        }
+        dailyRevenue[day].revenue += order.totalPrice;
+        dailyRevenue[day].orders += 1;
+      });
+
+    // Chuyển đổi thành array cho biểu đồ
+    const daysInMonth = dayjs(`${year}-${month}-01`).daysInMonth();
+    const dailyRevenueArray = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = dayjs(
+        `${year}-${month}-${String(day).padStart(2, "0")}`
+      ).format("YYYY-MM-DD");
+      dailyRevenueArray.push({
+        date: dateStr,
+        day: day,
+        revenue: dailyRevenue[dateStr]?.revenue || 0,
+        orders: dailyRevenue[dateStr]?.orders || 0,
+      });
+    }
+
+    res.json({
+      success: true,
+      month: monthParam,
+      totalOrders,
+      paidOrders,
+      unpaidOrders,
+      totalRevenue,
+      dailyRevenue: dailyRevenueArray,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy báo cáo doanh thu hàng tháng",
+      error: error.message,
+    });
+  }
+};
+
+// 📈 Lấy dữ liệu biểu đồ doanh thu (theo ngày trong tháng hoặc theo tháng trong năm)
+exports.getRevenueChartData = async (req, res) => {
+  try {
+    const type = req.query.type || "monthly"; // "daily" hoặc "monthly"
+    const year = req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year();
+    const month = req.query.month || dayjs().tz("Asia/Ho_Chi_Minh").month() + 1;
+
+    if (type === "daily") {
+      // Doanh thu theo ngày trong tháng
+      const startOfMonth = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("month")
+        .toDate();
+      const endOfMonth = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("month")
+        .toDate();
+
+      const orders = await Order.find({
+        createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+        isPaid: true,
+      });
+
+      const dailyData = {};
+      orders.forEach((order) => {
+        const day = dayjs(order.createdAt).tz("Asia/Ho_Chi_Minh").date();
+        if (!dailyData[day]) {
+          dailyData[day] = { revenue: 0, orders: 0 };
+        }
+        dailyData[day].revenue += order.totalPrice;
+        dailyData[day].orders += 1;
+      });
+
+      const daysInMonth = dayjs(
+        `${year}-${String(month).padStart(2, "0")}-01`
+      ).daysInMonth();
+      const chartData = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        chartData.push({
+          label: `Ngày ${day}`,
+          date: `${year}-${String(month).padStart(2, "0")}-${String(
+            day
+          ).padStart(2, "0")}`,
+          revenue: dailyData[day]?.revenue || 0,
+          orders: dailyData[day]?.orders || 0,
+        });
+      }
+
+      res.json({
+        success: true,
+        type: "daily",
+        year,
+        month,
+        data: chartData,
+      });
+    } else {
+      // Doanh thu theo tháng trong năm
+      const startOfYear = dayjs(`${year}-01-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("year")
+        .toDate();
+      const endOfYear = dayjs(`${year}-12-31`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("year")
+        .toDate();
+
+      const orders = await Order.find({
+        createdAt: { $gte: startOfYear, $lte: endOfYear },
+        isPaid: true,
+      });
+
+      const monthlyData = {};
+      orders.forEach((order) => {
+        const month = dayjs(order.createdAt).tz("Asia/Ho_Chi_Minh").month() + 1;
+        if (!monthlyData[month]) {
+          monthlyData[month] = { revenue: 0, orders: 0 };
+        }
+        monthlyData[month].revenue += order.totalPrice;
+        monthlyData[month].orders += 1;
+      });
+
+      const monthNames = [
+        "Tháng 1",
+        "Tháng 2",
+        "Tháng 3",
+        "Tháng 4",
+        "Tháng 5",
+        "Tháng 6",
+        "Tháng 7",
+        "Tháng 8",
+        "Tháng 9",
+        "Tháng 10",
+        "Tháng 11",
+        "Tháng 12",
+      ];
+
+      const chartData = [];
+      for (let month = 1; month <= 12; month++) {
+        chartData.push({
+          label: monthNames[month - 1],
+          month: month,
+          revenue: monthlyData[month]?.revenue || 0,
+          orders: monthlyData[month]?.orders || 0,
+        });
+      }
+
+      res.json({
+        success: true,
+        type: "monthly",
+        year,
+        data: chartData,
+      });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy dữ liệu biểu đồ doanh thu",
+      error: error.message,
+    });
+  }
+};
+
+// 📊 Lấy dữ liệu biểu đồ tròn: Số lượng sản phẩm bán ra vs nhập vào
+exports.getInventoryChartData = async (req, res) => {
+  try {
+    const year = req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year();
+    const month = req.query.month ? parseInt(req.query.month) : null;
+
+    // Tính toán khoảng thời gian
+    let startDate, endDate;
+    if (month !== null && month !== undefined) {
+      // Theo tháng
+      startDate = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("month")
+        .toDate();
+      endDate = dayjs(`${year}-${String(month).padStart(2, "0")}-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("month")
+        .toDate();
+    } else {
+      // Theo năm
+      startDate = dayjs(`${year}-01-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("year")
+        .toDate();
+      endDate = dayjs(`${year}-12-31`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("year")
+        .toDate();
+    }
+
+    // 1. Tính tổng số lượng sản phẩm BÁN RA (từ Order)
+    const orders = await Order.find({
+      createdAt: { $gte: startDate, $lte: endDate },
+      isPaid: true, // Chỉ tính đơn đã thanh toán
+    });
+
+    let totalSoldQuantity = 0;
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        totalSoldQuantity += item.quantity || 0;
+      });
+    });
+
+    // 2. Tính tổng số lượng sản phẩm NHẬP VÀO (từ Inventory type="import")
+    const imports = await Inventory.find({
+      type: "import",
+      date: { $gte: startDate, $lte: endDate },
+    });
+
+    let totalImportedQuantity = 0;
+    imports.forEach((importItem) => {
+      totalImportedQuantity += importItem.quantity || 0;
+    });
+
+    // 3. Tính tồn kho hiện tại (tổng countInStock của tất cả sản phẩm)
+    const products = await Product.find({ isActive: true });
+    let currentStock = 0;
+    products.forEach((product) => {
+      currentStock += product.countInStock || 0;
+    });
+
+    res.json({
+      success: true,
+      year,
+      month: month || null,
+      data: {
+        sold: totalSoldQuantity,
+        imported: totalImportedQuantity,
+        currentStock: currentStock,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy dữ liệu biểu đồ tồn kho",
+      error: error.message,
+    });
+  }
+};
+
+// 👥 Lấy dữ liệu biểu đồ người dùng (theo ngày/tháng)
+exports.getUserChartData = async (req, res) => {
+  try {
+    const type = req.query.type || "monthly"; // "daily" | "monthly"
+    const year = parseInt(
+      req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year(),
+      10
+    );
+    const month = req.query.month ? parseInt(req.query.month, 10) : null;
+
+    if (type === "daily") {
+      const targetMonth = month || dayjs().tz("Asia/Ho_Chi_Minh").month() + 1;
+      const startOfMonth = dayjs(
+        `${year}-${String(targetMonth).padStart(2, "0")}-01`
+      )
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("month")
+        .toDate();
+      const endOfMonth = dayjs(
+        `${year}-${String(targetMonth).padStart(2, "0")}-01`
+      )
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("month")
+        .toDate();
+
+      const users = await User.find({
+        createdAt: { $gte: startOfMonth, $lte: endOfMonth },
+      }).select("_id createdAt");
+
+      const daysInMonth = dayjs(
+        `${year}-${String(targetMonth).padStart(2, "0")}-01`
+      ).daysInMonth();
+      const dailyData = Array.from({ length: daysInMonth }, (_, idx) => ({
+        label: `Ngày ${idx + 1}`,
+        date: `${year}-${String(targetMonth).padStart(2, "0")}-${String(
+          idx + 1
+        ).padStart(2, "0")}`,
+        value: 0,
+      }));
+
+      users.forEach((user) => {
+        const day = dayjs(user.createdAt).tz("Asia/Ho_Chi_Minh").date();
+        const index = day - 1;
+        if (dailyData[index]) {
+          dailyData[index].value += 1;
+        }
+      });
+
+      return res.json({
+        success: true,
+        type: "daily",
+        year,
+        month: targetMonth,
+        data: dailyData,
+      });
+    }
+
+    // Mặc định: thống kê theo tháng trong năm
+    const startOfYear = dayjs(`${year}-01-01`)
+      .tz("Asia/Ho_Chi_Minh")
+      .startOf("year")
+      .toDate();
+    const endOfYear = dayjs(`${year}-12-31`)
+      .tz("Asia/Ho_Chi_Minh")
+      .endOf("year")
+      .toDate();
+
+    const users = await User.find({
+      createdAt: { $gte: startOfYear, $lte: endOfYear },
+    }).select("_id createdAt");
+
+    const monthNames = [
+      "Tháng 1",
+      "Tháng 2",
+      "Tháng 3",
+      "Tháng 4",
+      "Tháng 5",
+      "Tháng 6",
+      "Tháng 7",
+      "Tháng 8",
+      "Tháng 9",
+      "Tháng 10",
+      "Tháng 11",
+      "Tháng 12",
+    ];
+
+    const monthlyData = Array.from({ length: 12 }, (_, idx) => ({
+      label: monthNames[idx],
+      month: idx + 1,
+      value: 0,
+    }));
+
+    users.forEach((user) => {
+      const monthIndex = dayjs(user.createdAt).tz("Asia/Ho_Chi_Minh").month();
+      if (monthlyData[monthIndex]) {
+        monthlyData[monthIndex].value += 1;
+      }
+    });
+
+    return res.json({
+      success: true,
+      type: "monthly",
+      year,
+      data: monthlyData,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi khi lấy dữ liệu biểu đồ người dùng",
+      error: error.message,
+    });
+  }
+};
+
 exports.deleteUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id);
@@ -471,5 +887,16 @@ exports.deleteUser = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+exports.getStaffSellerAdmin = async (req, res) => {
+  try {
+    const users = await User.find({
+      role: { $in: ["staff", "seller", "admin"] },
+    }).select("-password");
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi khi lấy danh sách người dùng" });
   }
 };

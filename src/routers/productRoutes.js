@@ -35,7 +35,7 @@ router.get("/:id", getProductById);
 router.post(
   "/",
   verifyToken,
-  requireRole(["seller", "admin"]),
+  requireRole(["seller", "admin", "staff"]),
   upload.fields([
     { name: "image", maxCount: 1 },
     { name: "images", maxCount: 3 },

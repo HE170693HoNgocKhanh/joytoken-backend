@@ -76,7 +76,15 @@ const productSchema = new mongoose.Schema({
   label: {
     type: String, // e.g., "Sale", "New", "Hot"
     default: null
-  }
+  },
+  // Tags for events and special occasions
+  tags: [{
+    type: String // e.g., "sinh nhật", "halloween", "giáng sinh", "valentine", "tết", "8/3", "20/10", "1/6"
+  }],
+  // Events this product is suitable for
+  events: [{
+    type: String // e.g., "birthday", "halloween", "christmas", "valentine", "tet", "womens-day", "childrens-day"
+  }]
 }, {
   timestamps: true
 });

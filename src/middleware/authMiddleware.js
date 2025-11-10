@@ -36,6 +36,29 @@ exports.verifyToken = async (req, res, next) => {
   }
 };
 
+exports.optionalVerifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(" ")[1];
+
+  if (!token) {
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded?.id) {
+      const user = await User.findById(decoded.id).select("-password");
+      if (user) {
+        req.user = user;
+      }
+    }
+  } catch (error) {
+    console.warn("optionalVerifyToken warning:", error.message);
+  }
+
+  return next();
+};
+
 // Middleware kiểm tra role
 exports.requireRole = (roles) => {
   return (req, res, next) => {

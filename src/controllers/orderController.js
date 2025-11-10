@@ -423,7 +423,9 @@ exports.getOrderById = async (req, res) => {
 
     if (
       order.userId._id.toString() !== req.user.id &&
-      req.user.role !== "admin"
+      req.user.role !== "admin" &&
+      req.user.role !== "staff" &&
+      req.user.role !== "seller"
     ) {
       return res.status(403).json({
         success: false,

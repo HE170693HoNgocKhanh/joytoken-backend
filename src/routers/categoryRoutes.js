@@ -15,8 +15,8 @@ router.get('/', getAllCategories);
 router.get('/:id', getCategoryById);
 
 // Protected routes (Admin only)
-router.post('/', verifyToken, requireRole(['admin']), createCategory);
-router.put('/:id', verifyToken, requireRole(['admin']), updateCategory);
-router.delete('/:id', verifyToken, requireRole(['admin']), deleteCategory);
+router.post('/', verifyToken, requireRole(['admin', 'seller']), createCategory);
+router.put('/:id', verifyToken, requireRole(['admin', 'seller']), updateCategory);
+router.delete('/:id', verifyToken, requireRole(['admin', 'seller']), deleteCategory);
 
 module.exports = router;
