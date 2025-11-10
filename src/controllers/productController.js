@@ -395,15 +395,25 @@ exports.updateProduct = async (req, res) => {
     let image = product.image;
     let images = product.images || [];
 
-    if (req.files) {
-      if (req.files.image && req.files.image.length > 0) {
-        const uploadedMain = await uploadToCloudinary(req.files.image);
-        image = uploadedMain[0]; // thay ảnh chính
+    if (req.files && req.files.image && req.files.image.length > 0) {
+      const uploadedMain = await uploadToCloudinary(req.files.image);
+      image = uploadedMain[0]; // thay ảnh chính
+    }
+
+    // ✅ Xử lý images: dùng keptImages nếu có (loại bỏ ảnh bị xóa), rồi append ảnh mới
+    if (req.body.keptImages) {
+      try {
+        const kept = JSON.parse(req.body.keptImages);
+        images = Array.isArray(kept) ? kept : [];
+      } catch (e) {
+        console.error("Error parsing keptImages:", e);
+        images = product.images || [];
       }
-      if (req.files.images && req.files.images.length > 0) {
-        const uploadedList = await uploadToCloudinary(req.files.images);
-        images = [...images, ...uploadedList]; // giữ ảnh cũ, thêm ảnh mới
-      }
+    }
+
+    if (req.files && req.files.images && req.files.images.length > 0) {
+      const uploadedList = await uploadToCloudinary(req.files.images);
+      images = [...images, ...uploadedList]; // append vào kept (đã loại bỏ removed)
     }
 
     const updateData = {
@@ -431,6 +441,7 @@ exports.updateProduct = async (req, res) => {
       isNew: updateData.isNew,
       isBackInStock: updateData.isBackInStock,
       label: updateData.label,
+      images: updateData.images, // ✅ Log để kiểm tra images sau update
     });
 
     const updatedProduct = await Product.findByIdAndUpdate(
@@ -448,6 +459,7 @@ exports.updateProduct = async (req, res) => {
       isNew: updatedProduct.isNew,
       isBackInStock: updatedProduct.isBackInStock,
       label: updatedProduct.label,
+      images: updatedProduct.images,
     });
 
     res.status(200).json({
@@ -459,7 +471,6 @@ exports.updateProduct = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // ========================
 // 🗑️ DELETE PRODUCT (SOFT)
 // ========================
