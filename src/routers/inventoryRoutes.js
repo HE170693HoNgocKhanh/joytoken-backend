@@ -10,6 +10,11 @@ const {
 } = require("../controllers/inventoryController");
 
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
+const {
+  importStockValidator,
+  exportStockValidator,
+  productIdParamValidator,
+} = require("../validators/inventoryValidators");
 
 const router = express.Router();
 
@@ -22,6 +27,7 @@ router.post(
   "/import",
   verifyToken,
   requireRole(["admin", "staff"]),
+  importStockValidator,
   importStock
 );
 
@@ -30,6 +36,7 @@ router.post(
   "/export",
   verifyToken,
   requireRole(["admin", "staff"]),
+  exportStockValidator,
   exportStock
 );
 
@@ -61,6 +68,7 @@ router.get(
   "/product-history/:productId",
   verifyToken,
   requireRole(["admin", "staff"]),
+  productIdParamValidator,
   productHistory
 );
 

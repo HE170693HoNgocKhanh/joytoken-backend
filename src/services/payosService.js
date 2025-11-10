@@ -27,15 +27,8 @@ class PayOSService {
         paymentData
       );
 
-      // Lưu vào DB (fields tương tự v1)
-      await Order.findByIdAndUpdate(orderId, {
-        "paymentResult.provider": "PayOS",
-        "paymentResult.payOSData.orderCode": orderCode,
-        "paymentResult.payOSData.paymentLinkId":
-          paymentLinkResponse.paymentLinkId,
-        "paymentResult.payOSData.checkoutUrl": paymentLinkResponse.checkoutUrl,
-        "paymentResult.payOSData.qrCode": paymentLinkResponse.qrCode,
-      });
+      // Không lưu vào Order nữa vì với PayOS, Order chỉ được tạo sau khi thanh toán thành công
+      // Thông tin sẽ được lưu vào PendingOrder trong controller
 
       return { success: true, data: paymentLinkResponse, orderCode };
     } catch (error) {

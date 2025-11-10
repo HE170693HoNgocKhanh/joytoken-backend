@@ -700,20 +700,7 @@ exports.getInventoryChartData = async (req, res) => {
         .toDate();
     }
 
-    // 1. Tính tổng số lượng sản phẩm BÁN RA (từ Order)
-    const orders = await Order.find({
-      createdAt: { $gte: startDate, $lte: endDate },
-      isPaid: true, // Chỉ tính đơn đã thanh toán
-    });
-
-    let totalSoldQuantity = 0;
-    orders.forEach((order) => {
-      order.items.forEach((item) => {
-        totalSoldQuantity += item.quantity || 0;
-      });
-    });
-
-    // 2. Tính tổng số lượng sản phẩm NHẬP VÀO (từ Inventory type="import")
+    // 1. Tính tổng số lượng sản phẩm NHẬP VÀO (từ Inventory type="import")
     const imports = await Inventory.find({
       type: "import",
       date: { $gte: startDate, $lte: endDate },
@@ -724,11 +711,31 @@ exports.getInventoryChartData = async (req, res) => {
       totalImportedQuantity += importItem.quantity || 0;
     });
 
-    // 3. Tính tồn kho hiện tại (tổng countInStock của tất cả sản phẩm)
-    const products = await Product.find({ isActive: true });
-    let currentStock = 0;
-    products.forEach((product) => {
-      currentStock += product.countInStock || 0;
+    // 2. Tính tổng số lượng sản phẩm BÁN RA (từ Order đã thanh toán và KHÔNG bị hủy)
+    const orders = await Order.find({
+      createdAt: { $gte: startDate, $lte: endDate },
+      isPaid: true, // Chỉ tính đơn đã thanh toán
+      status: { $ne: "Cancelled" }, // Không tính đơn đã bị hủy
+    });
+
+    let totalSoldQuantity = 0;
+    orders.forEach((order) => {
+      order.items.forEach((item) => {
+        totalSoldQuantity += item.quantity || 0;
+      });
+    });
+
+    //  TỒN KHO = Nhập - Bán (không tính trả lại)
+    const currentStock = totalImportedQuantity - totalSoldQuantity;
+
+    // Debug log để kiểm tra 
+    console.log(" Inventory Chart Data:", {
+      year,
+      month,
+      imported: totalImportedQuantity,
+      sold: totalSoldQuantity,
+      calculatedStock: currentStock,
+      formula: `${totalImportedQuantity} - ${totalSoldQuantity} = ${currentStock}`,
     });
 
     res.json({
@@ -738,7 +745,7 @@ exports.getInventoryChartData = async (req, res) => {
       data: {
         sold: totalSoldQuantity,
         imported: totalImportedQuantity,
-        currentStock: currentStock,
+        currentStock: currentStock, // Tồn kho = Nhập - Bán
       },
     });
   } catch (error) {
@@ -751,7 +758,7 @@ exports.getInventoryChartData = async (req, res) => {
   }
 };
 
-// 👥 Lấy dữ liệu biểu đồ người dùng (theo ngày/tháng)
+//  Lấy dữ liệu biểu đồ người dùng (theo ngày/tháng)
 exports.getUserChartData = async (req, res) => {
   try {
     const type = req.query.type || "monthly"; // "daily" | "monthly"

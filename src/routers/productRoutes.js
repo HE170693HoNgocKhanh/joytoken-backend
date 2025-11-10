@@ -9,6 +9,12 @@ const {
 } = require("../controllers/productController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const upload = require("../middleware/upload"); // 👈 thêm middleware upload
+const {
+  createProductValidator,
+  updateProductValidator,
+  productIdParamValidator,
+  sellerIdParamValidator,
+} = require("../validators/productValidators");
 
 const router = express.Router();
 
@@ -21,13 +27,13 @@ router.get(
   requireRole(["seller", "admin"]),
   getProductsBySeller
 );
-router.get("/seller/:sellerId", getProductsBySeller);
+router.get("/seller/:sellerId", sellerIdParamValidator, getProductsBySeller);
 
 // =====================
 // 🌍 Public routes
 // =====================
 router.get("/", getAllProducts);
-router.get("/:id", getProductById);
+router.get("/:id", productIdParamValidator, getProductById);
 
 // =====================
 // 🔐 Protected routes
@@ -40,6 +46,7 @@ router.post(
     { name: "image", maxCount: 1 },
     { name: "images", maxCount: 3 },
   ]),
+  createProductValidator,
   createProduct
 );
 
@@ -47,10 +54,12 @@ router.put(
   "/:id",
   verifyToken,
   requireRole(["seller", "admin"]),
+  productIdParamValidator,
   upload.fields([
     { name: "image", maxCount: 1 },
     { name: "images", maxCount: 3 },
   ]),
+  updateProductValidator,
   updateProduct
 );
 
@@ -58,6 +67,7 @@ router.delete(
   "/:id",
   verifyToken,
   requireRole(["seller", "admin"]),
+  productIdParamValidator,
   deleteProduct
 );
 

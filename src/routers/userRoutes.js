@@ -22,6 +22,14 @@ const {
   getStaffSellerAdmin,
 } = require("../controllers/userController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
+const {
+  updateProfileValidator,
+  changeEmailRequestValidator,
+  verifyEmailOtpValidator,
+  updateByAdminValidator,
+  userIdParamValidator,
+  productIdParamValidator,
+} = require("../validators/userValidators");
 const multer = require("multer");
 const path = require("path");
 
@@ -107,11 +115,13 @@ router.get(
 );
 
 router.get("/profile", verifyToken, getProfile);
-router.put("/profile", verifyToken, updateProfile);
+router.put("/profile", verifyToken, updateProfileValidator, updateProfile);
 router.put(
   "/update-by-admin/:id",
   verifyToken,
   requireRole(["admin"]),
+  userIdParamValidator,
+  updateByAdminValidator,
   updateByAdmin
 );
 
@@ -137,14 +147,14 @@ router.post(
   uploadAvatar
 );
 
-router.post("/change-email", verifyToken, changeEmailRequest);
-router.post("/verify-email", verifyToken, verifyEmailOtp);
+router.post("/change-email", verifyToken, changeEmailRequestValidator, changeEmailRequest);
+router.post("/verify-email", verifyToken, verifyEmailOtpValidator, verifyEmailOtp);
 
-router.delete("/:id", verifyToken, requireRole(["admin"]), deleteUser);
+router.delete("/:id", verifyToken, requireRole(["admin"]), userIdParamValidator, deleteUser);
 
 // Wishlist
 router.get("/wishlist", verifyToken, getWishlist);
-router.post("/wishlist/:productId", verifyToken, addToWishlist);
-router.delete("/wishlist/:productId", verifyToken, removeFromWishlist);
+router.post("/wishlist/:productId", verifyToken, productIdParamValidator, addToWishlist);
+router.delete("/wishlist/:productId", verifyToken, productIdParamValidator, removeFromWishlist);
 
 module.exports = router;

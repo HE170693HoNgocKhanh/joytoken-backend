@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const orderSchema = new mongoose.Schema(
+const pendingOrderSchema = new mongoose.Schema(
   {
     userId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -49,18 +49,6 @@ const orderSchema = new mongoose.Schema(
       country: { type: String, required: true },
       phone: { type: String, required: true },
     },
-    paymentMethod: {
-      type: String,
-      required: true,
-      enum: ["COD", "Credit Card", "PayPal", "Bank Transfer", "PayOS"],
-    },
-    paymentResult: {
-      transactionId: String,
-      provider: String, // PayPal | Stripe | Momo | PayOS
-      status: String,
-      paidAt: Date,
-      email: String,
-    },
     itemsPrice: {
       type: Number,
       required: true,
@@ -81,8 +69,6 @@ const orderSchema = new mongoose.Schema(
       required: true,
       default: 0.0,
     },
-
-    // ✅ Voucher fields mới thêm
     discountApplied: {
       type: Boolean,
       default: false,
@@ -91,32 +77,25 @@ const orderSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
-
-    isPaid: {
-      type: Boolean,
-      default: false,
+    payOSOrderCode: {
+      type: Number,
+      required: true,
+      unique: true,
     },
-    paidAt: Date,
-    isDelivered: {
-      type: Boolean,
-      default: false,
+    payOSPaymentLinkId: String,
+    payOSCheckoutUrl: String,
+    payOSQrCode: String,
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 15 * 60 * 1000), // 15 phút
+      index: { expireAfterSeconds: 0 },
     },
-    deliveredAt: Date,
-    cancelReason: {
-      type: String,
-      default: null,
-    },
-    status: {
-      type: String,
-      enum: ["Pending", "Processing", "Shipped", "Delivered", "Cancelled"],
-      default: "Pending",
-    },
-    notes: String,
   },
   {
     timestamps: true,
   }
 );
 
-const Order = mongoose.model("Order", orderSchema);
-module.exports = Order;
+const PendingOrder = mongoose.model("PendingOrder", pendingOrderSchema);
+module.exports = PendingOrder;
+

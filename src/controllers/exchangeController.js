@@ -128,6 +128,37 @@ exports.createExchange = async (req, res) => {
       .populate("itemsToReturn.productId", "name image")
       .populate("itemsToExchange.productId", "name image");
 
+    // Tạo thông báo: cho user (đã gửi yêu cầu) và admin/seller (có yêu cầu mới)
+    try {
+      const { createNotification } = require("./notificationController");
+      const User = require("../models/User");
+
+      // Notify user
+      await createNotification(
+        req.user.id,
+        "exchange_created",
+        "Yêu cầu đổi hàng đã gửi",
+        `Yêu cầu đổi hàng #${exchange._id.toString().slice(-6)} đã được gửi. Chờ duyệt.`,
+        `/order-history`
+      );
+
+      // Notify admins/seller
+      const staffUsers = await User.find({ role: { $in: ["admin", "seller"] } }).select("_id");
+      await Promise.all(
+        staffUsers.map((u) =>
+          createNotification(
+            u._id,
+            "exchange_new",
+            "Yêu cầu đổi hàng mới",
+            `Có yêu cầu đổi hàng #${exchange._id.toString().slice(-6)} cần xem xét.`,
+            `/admin/exchanges`
+          )
+        )
+      );
+    } catch (notifErr) {
+      console.error("Error creating exchange notifications:", notifErr);
+    }
+
     res.status(201).json({
       success: true,
       message: "Yêu cầu đổi hàng đã được gửi thành công. Seller sẽ xem xét và phản hồi.",

@@ -16,7 +16,12 @@ dotenv.config({
   path: path.resolve(__dirname, "../.env"),
 });
 
-// ✅ Kết nối MongoDB
+// ✅ ENV Guards
+const requiredEnvs = ["JWT_SECRET", "MONGODB_URI"];
+const missing = requiredEnvs.filter((k) => !process.env[k] || String(process.env[k]).trim() === "");
+if (missing.length > 0) {
+  console.warn(`⚠️ Missing required ENV(s): ${missing.join(", ")}`);
+}
 
 const app = express();
 
@@ -61,6 +66,11 @@ app.get("/", (req, res) => {
 
 // ✅ Import tất cả router (có /auth/login bên trong)
 app.use("/api", routes);
+
+// ✅ Error handling
+const { notFound, errorHandler } = require("./middleware/errorHandler");
+app.use(notFound);
+app.use(errorHandler);
 
 const port = process.env.PORT || 8080;
 server.listen(port, () => {

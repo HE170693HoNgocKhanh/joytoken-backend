@@ -9,11 +9,12 @@ const {
 } = require("../controllers/messageController");
 const { verifyToken } = require("../middleware/authMiddleware");
 const upload = require("../middleware/upload");
+const { conversationIdParamValidator } = require("../validators/conversationValidators");
 
 const router = express.Router();
 
 router.get("/", verifyToken, getAllConversationsByUser);
-router.get("/:id", verifyToken, getConversationDetail);
+router.get("/:id", verifyToken, conversationIdParamValidator, getConversationDetail);
 router.post("/", verifyToken, createConversation);
 router.post("/upload/image", verifyToken, upload.single("image"), uploadImage);
 

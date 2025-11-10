@@ -1,7 +1,10 @@
 const Order = require("../models/Order");
+const PendingOrder = require("../models/PendingOrder");
 const Product = require("../models/Product");
 const Inventory = require("../models/Inventory");
 const payOSService = require("../services/payosService");
+const User = require("../models/User");
+const { createNotification } = require("./notificationController");
 
 // Helper function để enrich variant data từ Product
 const enrichVariantFromProduct = async (item) => {
@@ -157,87 +160,23 @@ exports.createOrder = async (req, res) => {
     const adjustedItemsPrice = itemsPrice;
     const finalTotalPrice = adjustedItemsPrice + taxPrice + shippingPrice - discountAmount;
 
-    // 4️⃣ Tạo order với variant đã được enrich
-    const order = await Order.create({
-      userId: req.user.id,
-      items: enrichedItems,
-      shippingAddress,
-      paymentMethod,
-      itemsPrice: adjustedItemsPrice, // Giá gốc trước giảm giá
-      taxPrice,
-      shippingPrice,
-      totalPrice: finalTotalPrice, // Tổng sau khi trừ discount
-      discountAmount,
-      discountApplied: discountAmount > 0,
-    });
-
-    // 5️⃣ Nếu COD: trừ kho ngay
-    if (paymentMethod === "COD") {
-      for (const item of enrichedItems) {
-        const product = await Product.findById(item.productId);
-        if (!product) continue;
-
-        let variantData = null;
-        if (item.variant && product.variants && product.variants.length > 0) {
-          const vIndex = product.variants.findIndex(
-            (v) => v._id.toString() === item.variant._id.toString()
-          );
-          if (vIndex >= 0) {
-            product.variants[vIndex].countInStock -= item.quantity;
-            variantData = { ...product.variants[vIndex].toObject() };
-          }
-        }
-
-        // Cập nhật tổng countInStock của product
-        product.countInStock = product.variants.reduce(
-          (sum, v) => sum + (v.countInStock || 0),
-          0
-        );
-        await product.save();
-
-        await Inventory.create({
-          productId: item.productId,
-          variant: variantData,
-          type: "export",
-          quantity: item.quantity,
-          note: "Bán hàng - COD",
-          stockAfter: variantData
-            ? variantData.countInStock
-            : product.countInStock,
-          orderId: order._id,
-        });
-      }
-    }
-
-    // 6️⃣ Nếu Online Payment → tạo link PayOS
-    let orderData = await Order.findById(order._id)
-      .populate("userId", "name email")
-      .populate("items.productId", "name image");
-
-    // Enrich variant data cho response
-    orderData = await enrichOrderItems(orderData);
-
-    let response = {
-      success: true,
-      message:
-        discountAmount > 0
-          ? "Đặt hàng thành công — Voucher 5% đã được áp dụng!"
-          : "Đặt hàng thành công",
-      data: orderData,
-      discountApplied: discountAmount > 0,
-      discountAmount,
-    };
-
+    // 4️⃣ Xử lý theo payment method
     if (paymentMethod === "PayOS") {
+      // Với PayOS: Chỉ tạo PendingOrder, KHÔNG tạo Order cho đến khi thanh toán thành công
       try {
+        // Tạo orderCode cho PayOS
+        const payOSOrderCode = parseInt(Date.now().toString().slice(-9));
+        
         const payOSItems = enrichedItems.map((i) => ({
           name: i.name,
           quantity: i.quantity,
           price: Math.round(i.price),
         }));
-        const shortDesc = `Thanh toán DH #${order._id.toString().slice(-6)}`;
+        const shortDesc = `Thanh toán DH #${payOSOrderCode.toString().slice(-6)}`;
+        
+        // Tạo payment link trước
         const paymentData = {
-          orderId: order._id.toString(),
+          orderId: payOSOrderCode.toString(), // Dùng orderCode tạm
           amount: Math.round(finalTotalPrice),
           description: shortDesc,
           buyerName: shippingAddress.fullName,
@@ -249,14 +188,43 @@ exports.createOrder = async (req, res) => {
           cancelUrl: cancelUrl || `${process.env.FRONTEND_URL}/order-failure`,
         };
         const paymentResult = await payOSService.createPaymentLink(paymentData);
-        response.payOS = {
-          checkoutUrl: paymentResult.data.checkoutUrl,
-          qrCode: paymentResult.data.qrCode,
-          orderCode: paymentResult.orderCode,
-        };
+
+        // Tạo PendingOrder để lưu thông tin tạm
+        const pendingOrder = await PendingOrder.create({
+          userId: req.user.id,
+          items: enrichedItems,
+          shippingAddress,
+          itemsPrice: adjustedItemsPrice,
+          taxPrice,
+          shippingPrice,
+          totalPrice: finalTotalPrice,
+          discountAmount,
+          discountApplied: discountAmount > 0,
+          payOSOrderCode: paymentResult.orderCode,
+          payOSPaymentLinkId: paymentResult.data.paymentLinkId,
+          payOSCheckoutUrl: paymentResult.data.checkoutUrl,
+          payOSQrCode: paymentResult.data.qrCode,
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: "Vui lòng thanh toán để hoàn tất đơn hàng",
+          data: {
+            _id: pendingOrder._id,
+            payOSOrderCode: pendingOrder.payOSOrderCode,
+            paymentMethod: "PayOS",
+            totalPrice: finalTotalPrice,
+            discountAmount,
+            discountApplied: discountAmount > 0,
+          },
+          payOS: {
+            checkoutUrl: paymentResult.data.checkoutUrl,
+            qrCode: paymentResult.data.qrCode,
+            orderCode: paymentResult.orderCode,
+          },
+        });
       } catch (err) {
         console.error("❌ Lỗi PayOS:", err);
-        await Order.findByIdAndDelete(order._id);
         return res.status(500).json({
           success: false,
           message: `Tạo payment link thất bại: ${err.message}`,
@@ -264,7 +232,98 @@ exports.createOrder = async (req, res) => {
       }
     }
 
-    res.status(201).json(response);
+    // 5️⃣ Nếu COD: Tạo Order và trừ kho ngay
+    const order = await Order.create({
+      userId: req.user.id,
+      items: enrichedItems,
+      shippingAddress,
+      paymentMethod,
+      itemsPrice: adjustedItemsPrice,
+      taxPrice,
+      shippingPrice,
+      totalPrice: finalTotalPrice,
+      discountAmount,
+      discountApplied: discountAmount > 0,
+    });
+
+    // Trừ kho cho COD
+    for (const item of enrichedItems) {
+      const product = await Product.findById(item.productId);
+      if (!product) continue;
+
+      let variantData = null;
+      if (item.variant && product.variants && product.variants.length > 0) {
+        const vIndex = product.variants.findIndex(
+          (v) => v._id.toString() === item.variant._id.toString()
+        );
+        if (vIndex >= 0) {
+          product.variants[vIndex].countInStock -= item.quantity;
+          variantData = { ...product.variants[vIndex].toObject() };
+        }
+      }
+
+      product.countInStock = product.variants.reduce(
+        (sum, v) => sum + (v.countInStock || 0),
+        0
+      );
+      await product.save();
+
+      await Inventory.create({
+        productId: item.productId,
+        variant: variantData,
+        type: "export",
+        quantity: item.quantity,
+        note: "Bán hàng - COD",
+        stockAfter: variantData
+          ? variantData.countInStock
+          : product.countInStock,
+        orderId: order._id,
+      });
+    }
+
+    // 6️⃣ Populate và enrich order data
+    let orderData = await Order.findById(order._id)
+      .populate("userId", "name email")
+      .populate("items.productId", "name image");
+
+    orderData = await enrichOrderItems(orderData);
+
+    // 7️⃣ Tạo thông báo cho người mua và admin/staff
+    try {
+      await createNotification(
+        req.user.id,
+        "order_created",
+        "Đơn hàng đã được tạo",
+        `Đơn hàng #${order._id.toString().slice(-6)} đã được tạo thành công.`,
+        `/order-history`
+      );
+
+      const staffUsers = await User.find({ role: { $in: ["admin", "staff", "seller"] } }).select("_id");
+      await Promise.all(
+        staffUsers.map((u) =>
+          createNotification(
+            u._id,
+            "order_new",
+            "Đơn hàng mới",
+            `Có đơn hàng mới #${order._id.toString().slice(-6)} cần xử lý.`,
+            `/admin/orders`
+          )
+        )
+      );
+    } catch (notifErr) {
+      console.error("Error creating order notifications:", notifErr);
+    }
+
+    res.status(201).json({
+      success: true,
+      message:
+        discountAmount > 0
+          ? "Đặt hàng thành công — Voucher 5% đã được áp dụng!"
+          : "Đặt hàng thành công",
+      data: orderData,
+      discountApplied: discountAmount > 0,
+      discountAmount,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: error.message });
@@ -273,44 +332,91 @@ exports.createOrder = async (req, res) => {
 // ==================== CẬP NHẬT THANH TOÁN ONLINE ====================
 exports.updateOrderToPaid = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id);
-    if (!order)
+    // Tìm PendingOrder theo _id (frontend gửi pendingOrderId)
+    const pendingOrder = await PendingOrder.findById(req.params.id);
+    
+    if (!pendingOrder) {
+      // Có thể order đã được tạo rồi, kiểm tra xem có Order nào với payOSOrderCode không
+      const existingOrder = await Order.findOne({
+        "paymentResult.payOSData.orderCode": req.body.id || req.params.id,
+      });
+      
+      if (existingOrder && existingOrder.isPaid) {
+        let populatedOrder = await Order.findById(existingOrder._id)
+          .populate("userId", "name email")
+          .populate("items.productId", "name image");
+        populatedOrder = await enrichOrderItems(populatedOrder);
+        
+        return res.status(200).json({
+          success: true,
+          message: "Đơn hàng đã được thanh toán trước đó",
+          data: populatedOrder,
+        });
+      }
+      
       return res
         .status(404)
-        .json({ success: false, message: "Không tìm thấy đơn hàng" });
-
-    if (order.paymentMethod === "COD") {
-      return res.status(400).json({
-        success: false,
-        message: "Đơn hàng COD không cần update thanh toán",
-      });
+        .json({ success: false, message: "Không tìm thấy đơn hàng chờ thanh toán" });
     }
 
-    // Kiểm tra xem đơn hàng đã được thanh toán chưa để tránh trừ kho hai lần
-    if (order.isPaid) {
-      let populatedOrder = await Order.findById(order._id)
-        .populate("userId", "name email")
-        .populate("items.productId", "name image");
+    // Kiểm tra lại tồn kho trước khi tạo order (có thể đã thay đổi)
+    for (const item of pendingOrder.items) {
+      const product = await Product.findById(item.productId);
+      if (!product) {
+        await PendingOrder.findByIdAndDelete(pendingOrder._id);
+        return res.status(404).json({
+          success: false,
+          message: `Sản phẩm ${item.name} không tồn tại`,
+        });
+      }
 
-      // Enrich variant data
-      populatedOrder = await enrichOrderItems(populatedOrder);
+      let variantStock = null;
+      if (item.variant && product.variants && product.variants.length > 0) {
+        const v = product.variants.find(
+          (v) => v._id.toString() === item.variant._id.toString()
+        );
+        if (v) variantStock = v.countInStock;
+      }
 
-      return res.status(200).json({
-        success: true,
-        message: "Đơn hàng đã được thanh toán trước đó",
-        data: populatedOrder,
-      });
+      if (
+        (variantStock !== null && variantStock < item.quantity) ||
+        (variantStock === null && product.countInStock < item.quantity)
+      ) {
+        await PendingOrder.findByIdAndDelete(pendingOrder._id);
+        return res.status(400).json({
+          success: false,
+          message: `Sản phẩm ${product.name} không đủ số lượng`,
+        });
+      }
     }
 
-    order.isPaid = true;
-    order.paidAt = new Date();
-    order.paymentResult = {
-      id: req.body.id,
-      status: req.body.status,
-      update_time: req.body.update_time,
-      email_address: req.body.email_address,
-    };
-    await order.save();
+    // Tạo Order từ PendingOrder
+    const order = await Order.create({
+      userId: pendingOrder.userId,
+      items: pendingOrder.items,
+      shippingAddress: pendingOrder.shippingAddress,
+      paymentMethod: "PayOS",
+      itemsPrice: pendingOrder.itemsPrice,
+      taxPrice: pendingOrder.taxPrice,
+      shippingPrice: pendingOrder.shippingPrice,
+      totalPrice: pendingOrder.totalPrice,
+      discountAmount: pendingOrder.discountAmount,
+      discountApplied: pendingOrder.discountApplied,
+      isPaid: true,
+      paidAt: new Date(),
+      paymentResult: {
+        provider: "PayOS",
+        payOSData: {
+          orderCode: pendingOrder.payOSOrderCode,
+          paymentLinkId: pendingOrder.payOSPaymentLinkId,
+          checkoutUrl: pendingOrder.payOSCheckoutUrl,
+          qrCode: pendingOrder.payOSQrCode,
+        },
+        status: req.body.status || "PAID",
+        update_time: req.body.update_time || new Date(),
+        email_address: req.body.email_address,
+      },
+    });
 
     // Trừ kho cho từng item
     for (const item of order.items) {
@@ -328,7 +434,6 @@ exports.updateOrderToPaid = async (req, res) => {
         }
       }
 
-      // Cập nhật tổng countInStock của product từ tất cả variants
       product.countInStock = product.variants.reduce(
         (sum, v) => sum + (v.countInStock || 0),
         0
@@ -348,16 +453,44 @@ exports.updateOrderToPaid = async (req, res) => {
       });
     }
 
+    // Xóa PendingOrder sau khi đã tạo Order thành công
+    await PendingOrder.findByIdAndDelete(pendingOrder._id);
+
+    // Tạo thông báo cho người mua và admin/staff
+    try {
+      await createNotification(
+        order.userId,
+        "order_created",
+        "Đơn hàng đã được tạo",
+        `Đơn hàng #${order._id.toString().slice(-6)} đã được thanh toán và tạo thành công.`,
+        `/order-history`
+      );
+
+      const staffUsers = await User.find({ role: { $in: ["admin", "staff", "seller"] } }).select("_id");
+      await Promise.all(
+        staffUsers.map((u) =>
+          createNotification(
+            u._id,
+            "order_new",
+            "Đơn hàng mới",
+            `Có đơn hàng mới #${order._id.toString().slice(-6)} cần xử lý.`,
+            `/admin/orders`
+          )
+        )
+      );
+    } catch (notifErr) {
+      console.error("Error creating order notifications:", notifErr);
+    }
+
     let populatedOrder = await Order.findById(order._id)
       .populate("userId", "name email")
       .populate("items.productId", "name image");
 
-    // Enrich variant data
     populatedOrder = await enrichOrderItems(populatedOrder);
 
     res.status(200).json({
       success: true,
-      message: "Thanh toán thành công và cập nhật kho",
+      message: "Thanh toán thành công và đơn hàng đã được tạo",
       data: populatedOrder,
     });
   } catch (error) {
@@ -370,7 +503,7 @@ exports.updateOrderToPaid = async (req, res) => {
 // controllers/orderController.js
 exports.updateOrderStatus = async (req, res) => {
   try {
-    const { status, methodPayment } = req.body;
+    const { status, cancelReason } = req.body;
     const order = await Order.findById(req.params.id);
 
     if (!order) {
@@ -379,26 +512,101 @@ exports.updateOrderStatus = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy đơn hàng" });
     }
 
-    // === CASES ===
-    // 1️⃣ Online payment (PayOS, MoMo, v.v.)
-    // Nếu khách thanh toán online, tiền đã trừ rồi, nên đánh dấu đã thanh toán ngay khi tạo đơn
-    if (methodPayment !== "COD") {
-      order.isPaid = true;
-      if (!order.paidAt) order.paidAt = new Date(); // ghi nhận thời gian thanh toán
+    const paymentMethod = order.paymentMethod;
+    const targetStatus = status;
+    const normalizedStatus = targetStatus.toLowerCase();
+
+    if (normalizedStatus === order.status.toLowerCase() && normalizedStatus !== "cancelled") {
+      let unchangedOrder = await Order.findById(order._id)
+        .populate("userId", "name email")
+        .populate("items.productId", "name image");
+      unchangedOrder = await enrichOrderItems(unchangedOrder);
+      return res.status(200).json({
+        success: true,
+        message: "Trạng thái không thay đổi",
+        data: unchangedOrder,
+      });
     }
 
-    // 2️⃣ COD (Cash on Delivery)
-    // Với COD, khách chỉ thanh toán khi đơn được giao (Delivered)
-    if (methodPayment === "COD" && status === "Delivered") {
-      order.isPaid = true;
-      order.paidAt = new Date(); // ghi nhận thời gian khách thanh toán khi nhận hàng
+    if (normalizedStatus === "cancelled") {
+      if (order.status === "Cancelled") {
+        return res.status(400).json({
+          success: false,
+          message: "Đơn hàng đã bị hủy trước đó.",
+        });
+      }
+
+      if (!cancelReason || cancelReason.trim() === "") {
+        return res.status(400).json({
+          success: false,
+          message: "Vui lòng cung cấp lý do hủy đơn.",
+        });
+      }
+
+      // Hoàn lại tồn kho nếu đơn chưa bị hủy trước đó
+      for (const item of order.items) {
+        const product = await Product.findById(item.productId);
+        if (!product) continue;
+
+        if (item.variant && product.variants && product.variants.length > 0) {
+          const vIndex = product.variants.findIndex(
+            (v) => v._id.toString() === item.variant._id.toString()
+          );
+          if (vIndex >= 0) {
+            product.variants[vIndex].countInStock += item.quantity;
+          }
+          product.countInStock = product.variants.reduce(
+            (sum, v) => sum + (v.countInStock || 0),
+            0
+          );
+        } else {
+          product.countInStock += item.quantity;
+        }
+        await product.save();
+      }
+
+      order.status = "Cancelled";
+      order.cancelReason = cancelReason.trim();
+      order.isPaid = false;
+      order.paidAt = undefined;
+      order.isDelivered = false;
+      order.deliveredAt = undefined;
+    } else {
+      order.status = targetStatus;
+      order.cancelReason = undefined;
+
+      if (targetStatus === "Delivered") {
+        order.isDelivered = true;
+        if (!order.deliveredAt) {
+          order.deliveredAt = new Date();
+        }
+
+        if (paymentMethod === "COD" && !order.isPaid) {
+          order.isPaid = true;
+          order.paidAt = new Date();
+        }
+
+        if (paymentMethod !== "COD") {
+          order.isPaid = true;
+          if (!order.paidAt) order.paidAt = new Date();
+        }
+      } else {
+        order.isDelivered = false;
+        order.deliveredAt = undefined;
+
+        if (paymentMethod === "COD") {
+          order.isPaid = false;
+          order.paidAt = undefined;
+        }
+      }
     }
 
-    // === CẬP NHẬT TRẠNG THÁI ===
-    // Chỉ cập nhật status
-    order.status = status;
+    await order.save();
 
-    const updatedOrder = await order.save();
+    let updatedOrder = await Order.findById(order._id)
+      .populate("userId", "name email")
+      .populate("items.productId", "name image");
+    updatedOrder = await enrichOrderItems(updatedOrder);
 
     res.status(200).json({
       success: true,
@@ -406,6 +614,7 @@ exports.updateOrderStatus = async (req, res) => {
       data: updatedOrder,
     });
   } catch (error) {
+    console.error("Error updating order status:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
