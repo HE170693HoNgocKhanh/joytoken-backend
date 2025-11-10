@@ -18,21 +18,23 @@ exports.getProfile = async (req, res) => {
   try {
     console.log("📥 Get profile request");
     console.log("👤 User from token:", req.user?._id);
-    
+
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     const user = await User.findById(req.user._id).select("-password");
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy user" });
     }
-    
+
     console.log("✅ Profile retrieved:", user._id);
     res.json(user);
   } catch (error) {
     console.error("❌ Error getting profile:", error);
-    res.status(500).json({ message: "Lỗi khi lấy thông tin user", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Lỗi khi lấy thông tin user", error: error.message });
   }
 };
 
@@ -41,13 +43,13 @@ exports.updateProfile = async (req, res) => {
   try {
     console.log("📝 Update profile request:", req.body);
     console.log("👤 User ID:", req.user?._id);
-    
+
     const { name, address, phone } = req.body;
-    
+
     if (!req.user || !req.user._id) {
       return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     // Validate dữ liệu đầu vào
     if (!name || name.trim() === "") {
       return res.status(400).json({ message: "Họ và tên không được để trống" });
@@ -56,19 +58,20 @@ exports.updateProfile = async (req, res) => {
     const updateData = {};
     if (name) updateData.name = name.trim();
     if (phone !== undefined) {
-      updateData.phone = phone && typeof phone === 'string' ? phone.trim() : (phone || "");
+      updateData.phone =
+        phone && typeof phone === "string" ? phone.trim() : phone || "";
     }
     if (address !== undefined) {
-      updateData.address = address && typeof address === 'string' ? address.trim() : (address || "");
+      updateData.address =
+        address && typeof address === "string" ? address.trim() : address || "";
     }
 
     console.log("💾 Updating user with data:", updateData);
 
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      updateData,
-      { new: true, runValidators: true }
-    ).select("-password");
+    const user = await User.findByIdAndUpdate(req.user._id, updateData, {
+      new: true,
+      runValidators: true,
+    }).select("-password");
 
     if (!user) {
       console.log("❌ User not found after update");
@@ -79,23 +82,27 @@ exports.updateProfile = async (req, res) => {
     console.log("📋 Updated user data:", {
       name: user.name,
       phone: user.phone,
-      address: user.address
+      address: user.address,
     });
 
     res.json({ message: "Cập nhật thành công", user });
   } catch (error) {
     console.error("❌ Error updating profile:", error);
-    
+
     // Xử lý lỗi validation từ Mongoose
-    if (error.name === 'ValidationError') {
-      const validationErrors = Object.values(error.errors).map(e => e.message).join(', ');
-      return res.status(400).json({ 
-        message: "Dữ liệu không hợp lệ", 
-        error: validationErrors 
+    if (error.name === "ValidationError") {
+      const validationErrors = Object.values(error.errors)
+        .map((e) => e.message)
+        .join(", ");
+      return res.status(400).json({
+        message: "Dữ liệu không hợp lệ",
+        error: validationErrors,
       });
     }
-    
-    res.status(500).json({ message: "Lỗi khi cập nhật thông tin", error: error.message });
+
+    res
+      .status(500)
+      .json({ message: "Lỗi khi cập nhật thông tin", error: error.message });
   }
 };
 
@@ -108,7 +115,7 @@ exports.uploadAvatar = async (req, res) => {
       originalname: req.file?.originalname,
       mimetype: req.file?.mimetype,
       size: req.file?.size,
-      path: req.file?.path
+      path: req.file?.path,
     });
     console.log("User ID:", req.user?._id);
 
@@ -140,16 +147,16 @@ exports.uploadAvatar = async (req, res) => {
 
     console.log("✅ Avatar updated successfully for user:", user._id);
     console.log("🖼️ Avatar URL in DB:", user.avatar);
-    
-    res.json({ 
-      message: "Cập nhật ảnh đại diện thành công", 
-      user 
+
+    res.json({
+      message: "Cập nhật ảnh đại diện thành công",
+      user,
     });
   } catch (error) {
     console.error("❌ Error uploading avatar:", error);
-    res.status(500).json({ 
-      message: "Lỗi khi tải ảnh", 
-      error: error.message 
+    res.status(500).json({
+      message: "Lỗi khi tải ảnh",
+      error: error.message,
     });
   }
 };
@@ -232,16 +239,19 @@ exports.getWishlist = async (req, res) => {
   try {
     console.log("📥 Get wishlist request");
     console.log("👤 User ID:", req.user?._id);
-    
+
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Chưa đăng nhập' });
+      return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
-    const user = await User.findById(req.user._id).populate('wishlist', 'name image price');
+
+    const user = await User.findById(req.user._id).populate(
+      "wishlist",
+      "name image price"
+    );
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy user' });
+      return res.status(404).json({ message: "Không tìm thấy user" });
     }
-    
+
     console.log("✅ Wishlist retrieved:", user.wishlist?.length || 0, "items");
     res.json({ success: true, data: user.wishlist || [] });
   } catch (error) {
@@ -255,28 +265,31 @@ exports.addToWishlist = async (req, res) => {
     console.log("➕ Add to wishlist request");
     console.log("👤 User ID:", req.user?._id);
     console.log("📦 Product ID:", req.params.productId);
-    
+
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Chưa đăng nhập' });
+      return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     const { productId } = req.params;
-    const product = await Product.findById(productId).select('_id');
+    const product = await Product.findById(productId).select("_id");
     if (!product) {
-      return res.status(404).json({ message: 'Sản phẩm không tồn tại' });
+      return res.status(404).json({ message: "Sản phẩm không tồn tại" });
     }
 
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $addToSet: { wishlist: productId } },
       { new: true }
-    ).populate('wishlist', 'name image price');
+    ).populate("wishlist", "name image price");
 
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy user' });
+      return res.status(404).json({ message: "Không tìm thấy user" });
     }
 
-    console.log("✅ Product added to wishlist. Total items:", user.wishlist?.length || 0);
+    console.log(
+      "✅ Product added to wishlist. Total items:",
+      user.wishlist?.length || 0
+    );
     res.json({ success: true, data: user.wishlist });
   } catch (error) {
     console.error("❌ Error adding to wishlist:", error);
@@ -289,23 +302,26 @@ exports.removeFromWishlist = async (req, res) => {
     console.log("➖ Remove from wishlist request");
     console.log("👤 User ID:", req.user?._id);
     console.log("📦 Product ID:", req.params.productId);
-    
+
     if (!req.user || !req.user._id) {
-      return res.status(401).json({ message: 'Chưa đăng nhập' });
+      return res.status(401).json({ message: "Chưa đăng nhập" });
     }
-    
+
     const { productId } = req.params;
     const user = await User.findByIdAndUpdate(
       req.user._id,
       { $pull: { wishlist: productId } },
       { new: true }
-    ).populate('wishlist', 'name image price');
+    ).populate("wishlist", "name image price");
 
     if (!user) {
-      return res.status(404).json({ message: 'Không tìm thấy user' });
+      return res.status(404).json({ message: "Không tìm thấy user" });
     }
 
-    console.log("✅ Product removed from wishlist. Total items:", user.wishlist?.length || 0);
+    console.log(
+      "✅ Product removed from wishlist. Total items:",
+      user.wishlist?.length || 0
+    );
     res.json({ success: true, data: user.wishlist });
   } catch (error) {
     console.error("❌ Error removing from wishlist:", error);
@@ -454,11 +470,18 @@ exports.getDailyRevenueReport = async (req, res) => {
 // 📊 Lấy doanh thu theo tháng
 exports.getMonthlyRevenueReport = async (req, res) => {
   try {
-    const monthParam = req.query.month || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM");
+    const monthParam =
+      req.query.month || dayjs().tz("Asia/Ho_Chi_Minh").format("YYYY-MM");
     const [year, month] = monthParam.split("-");
 
-    const startOfMonth = dayjs(`${year}-${month}-01`).tz("Asia/Ho_Chi_Minh").startOf("month").toDate();
-    const endOfMonth = dayjs(`${year}-${month}-01`).tz("Asia/Ho_Chi_Minh").endOf("month").toDate();
+    const startOfMonth = dayjs(`${year}-${month}-01`)
+      .tz("Asia/Ho_Chi_Minh")
+      .startOf("month")
+      .toDate();
+    const endOfMonth = dayjs(`${year}-${month}-01`)
+      .tz("Asia/Ho_Chi_Minh")
+      .endOf("month")
+      .toDate();
 
     // Lấy tất cả đơn hàng trong tháng
     const orders = await Order.find({
@@ -480,7 +503,9 @@ exports.getMonthlyRevenueReport = async (req, res) => {
     orders
       .filter((o) => o.isPaid)
       .forEach((order) => {
-        const day = dayjs(order.createdAt).tz("Asia/Ho_Chi_Minh").format("YYYY-MM-DD");
+        const day = dayjs(order.createdAt)
+          .tz("Asia/Ho_Chi_Minh")
+          .format("YYYY-MM-DD");
         if (!dailyRevenue[day]) {
           dailyRevenue[day] = { revenue: 0, orders: 0 };
         }
@@ -492,7 +517,9 @@ exports.getMonthlyRevenueReport = async (req, res) => {
     const daysInMonth = dayjs(`${year}-${month}-01`).daysInMonth();
     const dailyRevenueArray = [];
     for (let day = 1; day <= daysInMonth; day++) {
-      const dateStr = dayjs(`${year}-${month}-${String(day).padStart(2, "0")}`).format("YYYY-MM-DD");
+      const dateStr = dayjs(
+        `${year}-${month}-${String(day).padStart(2, "0")}`
+      ).format("YYYY-MM-DD");
       dailyRevenueArray.push({
         date: dateStr,
         day: day,
@@ -553,12 +580,16 @@ exports.getRevenueChartData = async (req, res) => {
         dailyData[day].orders += 1;
       });
 
-      const daysInMonth = dayjs(`${year}-${String(month).padStart(2, "0")}-01`).daysInMonth();
+      const daysInMonth = dayjs(
+        `${year}-${String(month).padStart(2, "0")}-01`
+      ).daysInMonth();
       const chartData = [];
       for (let day = 1; day <= daysInMonth; day++) {
         chartData.push({
           label: `Ngày ${day}`,
-          date: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+          date: `${year}-${String(month).padStart(2, "0")}-${String(
+            day
+          ).padStart(2, "0")}`,
           revenue: dailyData[day]?.revenue || 0,
           orders: dailyData[day]?.orders || 0,
         });
@@ -573,8 +604,14 @@ exports.getRevenueChartData = async (req, res) => {
       });
     } else {
       // Doanh thu theo tháng trong năm
-      const startOfYear = dayjs(`${year}-01-01`).tz("Asia/Ho_Chi_Minh").startOf("year").toDate();
-      const endOfYear = dayjs(`${year}-12-31`).tz("Asia/Ho_Chi_Minh").endOf("year").toDate();
+      const startOfYear = dayjs(`${year}-01-01`)
+        .tz("Asia/Ho_Chi_Minh")
+        .startOf("year")
+        .toDate();
+      const endOfYear = dayjs(`${year}-12-31`)
+        .tz("Asia/Ho_Chi_Minh")
+        .endOf("year")
+        .toDate();
 
       const orders = await Order.find({
         createdAt: { $gte: startOfYear, $lte: endOfYear },
@@ -592,8 +629,18 @@ exports.getRevenueChartData = async (req, res) => {
       });
 
       const monthNames = [
-        "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
-        "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12",
+        "Tháng 1",
+        "Tháng 2",
+        "Tháng 3",
+        "Tháng 4",
+        "Tháng 5",
+        "Tháng 6",
+        "Tháng 7",
+        "Tháng 8",
+        "Tháng 9",
+        "Tháng 10",
+        "Tháng 11",
+        "Tháng 12",
       ];
 
       const chartData = [];
@@ -708,16 +755,23 @@ exports.getInventoryChartData = async (req, res) => {
 exports.getUserChartData = async (req, res) => {
   try {
     const type = req.query.type || "monthly"; // "daily" | "monthly"
-    const year = parseInt(req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year(), 10);
+    const year = parseInt(
+      req.query.year || dayjs().tz("Asia/Ho_Chi_Minh").year(),
+      10
+    );
     const month = req.query.month ? parseInt(req.query.month, 10) : null;
 
     if (type === "daily") {
       const targetMonth = month || dayjs().tz("Asia/Ho_Chi_Minh").month() + 1;
-      const startOfMonth = dayjs(`${year}-${String(targetMonth).padStart(2, "0")}-01`)
+      const startOfMonth = dayjs(
+        `${year}-${String(targetMonth).padStart(2, "0")}-01`
+      )
         .tz("Asia/Ho_Chi_Minh")
         .startOf("month")
         .toDate();
-      const endOfMonth = dayjs(`${year}-${String(targetMonth).padStart(2, "0")}-01`)
+      const endOfMonth = dayjs(
+        `${year}-${String(targetMonth).padStart(2, "0")}-01`
+      )
         .tz("Asia/Ho_Chi_Minh")
         .endOf("month")
         .toDate();
@@ -726,10 +780,14 @@ exports.getUserChartData = async (req, res) => {
         createdAt: { $gte: startOfMonth, $lte: endOfMonth },
       }).select("_id createdAt");
 
-      const daysInMonth = dayjs(`${year}-${String(targetMonth).padStart(2, "0")}-01`).daysInMonth();
+      const daysInMonth = dayjs(
+        `${year}-${String(targetMonth).padStart(2, "0")}-01`
+      ).daysInMonth();
       const dailyData = Array.from({ length: daysInMonth }, (_, idx) => ({
         label: `Ngày ${idx + 1}`,
-        date: `${year}-${String(targetMonth).padStart(2, "0")}-${String(idx + 1).padStart(2, "0")}`,
+        date: `${year}-${String(targetMonth).padStart(2, "0")}-${String(
+          idx + 1
+        ).padStart(2, "0")}`,
         value: 0,
       }));
 
@@ -751,16 +809,32 @@ exports.getUserChartData = async (req, res) => {
     }
 
     // Mặc định: thống kê theo tháng trong năm
-    const startOfYear = dayjs(`${year}-01-01`).tz("Asia/Ho_Chi_Minh").startOf("year").toDate();
-    const endOfYear = dayjs(`${year}-12-31`).tz("Asia/Ho_Chi_Minh").endOf("year").toDate();
+    const startOfYear = dayjs(`${year}-01-01`)
+      .tz("Asia/Ho_Chi_Minh")
+      .startOf("year")
+      .toDate();
+    const endOfYear = dayjs(`${year}-12-31`)
+      .tz("Asia/Ho_Chi_Minh")
+      .endOf("year")
+      .toDate();
 
     const users = await User.find({
       createdAt: { $gte: startOfYear, $lte: endOfYear },
     }).select("_id createdAt");
 
     const monthNames = [
-      "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
-      "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12",
+      "Tháng 1",
+      "Tháng 2",
+      "Tháng 3",
+      "Tháng 4",
+      "Tháng 5",
+      "Tháng 6",
+      "Tháng 7",
+      "Tháng 8",
+      "Tháng 9",
+      "Tháng 10",
+      "Tháng 11",
+      "Tháng 12",
     ];
 
     const monthlyData = Array.from({ length: 12 }, (_, idx) => ({
@@ -813,5 +887,16 @@ exports.deleteUser = async (req, res) => {
       success: false,
       message: error.message,
     });
+  }
+};
+exports.getStaffSellerAdmin = async (req, res) => {
+  try {
+    const users = await User.find({
+      role: { $in: ["staff", "seller", "admin"] },
+    }).select("-password");
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi khi lấy danh sách người dùng" });
   }
 };

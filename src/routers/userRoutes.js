@@ -19,6 +19,7 @@ const {
   getWishlist,
   addToWishlist,
   removeFromWishlist,
+  getStaffSellerAdmin,
 } = require("../controllers/userController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const multer = require("multer");
@@ -61,6 +62,8 @@ const upload = multer({
 
 // ✅ Routes
 router.get("/get-all", verifyToken, requireRole(["admin"]), getAllUser);
+router.get("/get-staff-seller-admin", verifyToken, getStaffSellerAdmin);
+
 router.get(
   "/statistics",
   verifyToken,
