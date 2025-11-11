@@ -55,15 +55,36 @@ exports.updateProfile = async (req, res) => {
       return res.status(400).json({ message: "Họ và tên không được để trống" });
     }
 
+    // Validate phone nếu có
+    if (phone !== undefined && phone !== null && phone !== "") {
+      const phoneRegex = /^[0-9]{10,11}$/;
+      if (!phoneRegex.test(phone.trim())) {
+        return res.status(400).json({ message: "Số điện thoại phải có 10-11 chữ số" });
+      }
+    }
+
+    // Validate address nếu có
+    if (address !== undefined && address !== null && address !== "") {
+      const trimmedAddress = address.trim();
+      if (trimmedAddress.length < 5) {
+        return res.status(400).json({ message: "Địa chỉ phải có ít nhất 5 ký tự" });
+      }
+      if (trimmedAddress.length > 200) {
+        return res.status(400).json({ message: "Địa chỉ không được vượt quá 200 ký tự" });
+      }
+    }
+
     const updateData = {};
     if (name) updateData.name = name.trim();
-    if (phone !== undefined) {
-      updateData.phone =
-        phone && typeof phone === "string" ? phone.trim() : phone || "";
+    if (phone !== undefined && phone !== null && phone !== "") {
+      updateData.phone = phone.trim();
+    } else if (phone === "") {
+      updateData.phone = "";
     }
-    if (address !== undefined) {
-      updateData.address =
-        address && typeof address === "string" ? address.trim() : address || "";
+    if (address !== undefined && address !== null && address !== "") {
+      updateData.address = address.trim();
+    } else if (address === "") {
+      updateData.address = "";
     }
 
     console.log("💾 Updating user with data:", updateData);
@@ -900,6 +921,21 @@ exports.getStaffSellerAdmin = async (req, res) => {
   try {
     const users = await User.find({
       role: { $in: ["staff", "seller", "admin"] },
+    }).select("-password");
+    res.json(users);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Lỗi khi lấy danh sách người dùng" });
+  }
+};
+
+// Lấy danh sách admin/staff/seller (loại trừ user hiện tại) để chat
+exports.getChatableUsers = async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const users = await User.find({
+      role: { $in: ["staff", "seller", "admin"] },
+      _id: { $ne: currentUserId }, // Loại trừ user hiện tại
     }).select("-password");
     res.json(users);
   } catch (error) {

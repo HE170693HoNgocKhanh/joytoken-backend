@@ -122,3 +122,43 @@ exports.login = async (req, res) => {
     res.status(500).json({ message: "Lỗi server khi đăng nhập." });
   }
 };
+
+// ✅ [4] Lấy thông tin user hiện tại (verify token)
+exports.getCurrentUser = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ message: "Chưa đăng nhập" });
+    }
+
+    const user = await User.findById(req.user.id).select("-password");
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy người dùng" });
+    }
+
+    res.json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      emailVerified: user.emailVerified,
+      phone: user.phone,
+      address: user.address,
+      avatar: user.avatar,
+    });
+  } catch (error) {
+    console.error("❌ Lỗi lấy thông tin user:", error);
+    res.status(500).json({ message: "Lỗi server khi lấy thông tin user." });
+  }
+};
+
+// ✅ [5] Đăng xuất
+exports.logout = async (req, res) => {
+  try {
+    // Với JWT, logout chủ yếu là client-side (xóa token)
+    // Backend chỉ cần trả về success
+    res.status(200).json({ message: "Đăng xuất thành công" });
+  } catch (error) {
+    console.error("❌ Lỗi đăng xuất:", error);
+    res.status(500).json({ message: "Lỗi server khi đăng xuất." });
+  }
+};

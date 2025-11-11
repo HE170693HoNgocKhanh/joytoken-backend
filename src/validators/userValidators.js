@@ -6,10 +6,31 @@ const updateProfileValidator = validateBody({
     isLength: { min: 2, max: 50 },
   },
   phone: {
-    matches: /^[0-9]{10,11}$/,
+    custom: (value) => {
+      // Phone là optional, nhưng nếu có thì phải đúng format
+      if (value !== undefined && value !== null && value !== "") {
+        const phoneRegex = /^[0-9]{10,11}$/;
+        if (!phoneRegex.test(value.trim())) {
+          return "Số điện thoại phải có 10-11 chữ số";
+        }
+      }
+      return null;
+    },
   },
   address: {
-    isLength: { min: 5, max: 200 },
+    custom: (value) => {
+      // Address là optional, nhưng nếu có thì phải có độ dài hợp lệ
+      if (value !== undefined && value !== null && value !== "") {
+        const trimmed = value.trim();
+        if (trimmed.length < 5) {
+          return "Địa chỉ phải có ít nhất 5 ký tự";
+        }
+        if (trimmed.length > 200) {
+          return "Địa chỉ không được vượt quá 200 ký tự";
+        }
+      }
+      return null;
+    },
   },
 });
 

@@ -1,10 +1,11 @@
 const express = require('express');
-const { register, login } = require('../controllers/authController');
+const { register, login, getCurrentUser, logout } = require('../controllers/authController');
 const { verifyRegisterOtp } = require('../controllers/authController');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
 const { registerValidator, loginValidator, verifyEmailValidator } = require('../validators/authValidators');
+const { verifyToken } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -38,6 +39,8 @@ const upload = multer({
 // AUTH
 router.post('/register', registerValidator, register);
 router.post('/login', loginValidator, login);
+router.get('/me', verifyToken, getCurrentUser);
+router.post('/logout', verifyToken, logout);
 
 // EMAIL
 router.post('/verify-email', verifyEmailValidator, verifyRegisterOtp );
