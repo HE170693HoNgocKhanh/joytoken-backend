@@ -60,6 +60,12 @@ const orderSchema = new mongoose.Schema(
       status: String,
       paidAt: Date,
       email: String,
+      payOSData: {
+        orderCode: { type: Number, unique: true, sparse: true }, // ✅ Unique để tránh duplicate orders
+        paymentLinkId: String,
+        checkoutUrl: String,
+        qrCode: String,
+      },
     },
     itemsPrice: {
       type: Number,
@@ -119,4 +125,19 @@ const orderSchema = new mongoose.Schema(
 );
 
 const Order = mongoose.model("Order", orderSchema);
+
+// ✅ Tạo unique index trên payOSOrderCode để đảm bảo không có duplicate orders
+// Index này sẽ được tạo tự động khi model được load lần đầu
+Order.collection.createIndex(
+  { "paymentResult.payOSData.orderCode": 1 },
+  { unique: true, sparse: true, background: true },
+  (err) => {
+    if (err && err.code !== 85) { // 85 = IndexOptionsConflict
+      console.warn("⚠️ Warning creating unique index on payOSOrderCode:", err.message);
+    } else {
+      console.log("✅ Unique index on payOSOrderCode created/verified");
+    }
+  }
+);
+
 module.exports = Order;

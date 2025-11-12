@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Order = require("../models/Order");
 const PendingOrder = require("../models/PendingOrder");
 const Product = require("../models/Product");
@@ -331,27 +332,41 @@ exports.createOrder = async (req, res) => {
 };
 // ==================== CẬP NHẬT THANH TOÁN ONLINE ====================
 exports.updateOrderToPaid = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
   try {
-    // Tìm PendingOrder theo _id (frontend gửi pendingOrderId)
-    const pendingOrder = await PendingOrder.findById(req.params.id);
+    // ✅ BƯỚC 1: Tìm và XÓA PendingOrder trong transaction (atomic operation)
+    // Sử dụng findOneAndDelete để đảm bảo chỉ 1 request có thể xóa được
+    const pendingOrder = await PendingOrder.findOneAndDelete(
+      { _id: req.params.id },
+      { session }
+    );
     
     if (!pendingOrder) {
-      // Có thể order đã được tạo rồi, kiểm tra xem có Order nào với payOSOrderCode không
-      const existingOrder = await Order.findOne({
-        "paymentResult.payOSData.orderCode": req.body.id || req.params.id,
-      });
+      // PendingOrder không tồn tại hoặc đã bị xóa, kiểm tra xem đã có Order chưa
+      await session.abortTransaction();
+      session.endSession();
       
-      if (existingOrder && existingOrder.isPaid) {
-        let populatedOrder = await Order.findById(existingOrder._id)
-          .populate("userId", "name email")
-          .populate("items.productId", "name image");
-        populatedOrder = await enrichOrderItems(populatedOrder);
-        
-        return res.status(200).json({
-          success: true,
-          message: "Đơn hàng đã được thanh toán trước đó",
-          data: populatedOrder,
+      // Tìm theo orderCode từ query params hoặc body
+      const orderCode = req.query.orderCode || req.body.orderCode;
+      if (orderCode) {
+        const existingOrder = await Order.findOne({
+          "paymentResult.payOSData.orderCode": parseInt(orderCode),
         });
+        
+        if (existingOrder && existingOrder.isPaid) {
+          let populatedOrder = await Order.findById(existingOrder._id)
+            .populate("userId", "name email")
+            .populate("items.productId", "name image");
+          populatedOrder = await enrichOrderItems(populatedOrder);
+          
+          return res.status(200).json({
+            success: true,
+            message: "Đơn hàng đã được thanh toán trước đó",
+            data: populatedOrder,
+          });
+        }
       }
       
       return res
@@ -359,11 +374,37 @@ exports.updateOrderToPaid = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy đơn hàng chờ thanh toán" });
     }
 
-    // Kiểm tra lại tồn kho trước khi tạo order (có thể đã thay đổi)
+    // ✅ BƯỚC 2: Kiểm tra xem đã có Order nào với cùng payOSOrderCode chưa
+    // Kiểm tra này phải được thực hiện SAU KHI đã xóa PendingOrder để tránh race condition
+    const existingOrderByCode = await Order.findOne({
+      "paymentResult.payOSData.orderCode": pendingOrder.payOSOrderCode,
+    }).session(session);
+
+    if (existingOrderByCode) {
+      // Đã có Order với cùng payOSOrderCode, rollback và trả về Order đó
+      await session.abortTransaction();
+      session.endSession();
+      
+      console.log(`⚠️ Phát hiện Order trùng với payOSOrderCode: ${pendingOrder.payOSOrderCode}. Trả về Order hiện có.`);
+      
+      let populatedOrder = await Order.findById(existingOrderByCode._id)
+        .populate("userId", "name email")
+        .populate("items.productId", "name image");
+      populatedOrder = await enrichOrderItems(populatedOrder);
+      
+      return res.status(200).json({
+        success: true,
+        message: "Đơn hàng đã được tạo trước đó",
+        data: populatedOrder,
+      });
+    }
+
+    // ✅ BƯỚC 3: Kiểm tra lại tồn kho trước khi tạo order (có thể đã thay đổi)
     for (const item of pendingOrder.items) {
-      const product = await Product.findById(item.productId);
+      const product = await Product.findById(item.productId).session(session);
       if (!product) {
-        await PendingOrder.findByIdAndDelete(pendingOrder._id);
+        await session.abortTransaction();
+        session.endSession();
         return res.status(404).json({
           success: false,
           message: `Sản phẩm ${item.name} không tồn tại`,
@@ -382,7 +423,8 @@ exports.updateOrderToPaid = async (req, res) => {
         (variantStock !== null && variantStock < item.quantity) ||
         (variantStock === null && product.countInStock < item.quantity)
       ) {
-        await PendingOrder.findByIdAndDelete(pendingOrder._id);
+        await session.abortTransaction();
+        session.endSession();
         return res.status(400).json({
           success: false,
           message: `Sản phẩm ${product.name} không đủ số lượng`,
@@ -390,37 +432,74 @@ exports.updateOrderToPaid = async (req, res) => {
       }
     }
 
-    // Tạo Order từ PendingOrder
-    const order = await Order.create({
-      userId: pendingOrder.userId,
-      items: pendingOrder.items,
-      shippingAddress: pendingOrder.shippingAddress,
-      paymentMethod: "PayOS",
-      itemsPrice: pendingOrder.itemsPrice,
-      taxPrice: pendingOrder.taxPrice,
-      shippingPrice: pendingOrder.shippingPrice,
-      totalPrice: pendingOrder.totalPrice,
-      discountAmount: pendingOrder.discountAmount,
-      discountApplied: pendingOrder.discountApplied,
-      isPaid: true,
-      paidAt: new Date(),
-      paymentResult: {
-        provider: "PayOS",
-        payOSData: {
-          orderCode: pendingOrder.payOSOrderCode,
-          paymentLinkId: pendingOrder.payOSPaymentLinkId,
-          checkoutUrl: pendingOrder.payOSCheckoutUrl,
-          qrCode: pendingOrder.payOSQrCode,
+    // ✅ BƯỚC 4: Tạo Order từ PendingOrder trong transaction
+    // Sử dụng try-catch để bắt lỗi duplicate key (nếu unique constraint bị vi phạm)
+    let order;
+    try {
+      const orderData = {
+        userId: pendingOrder.userId,
+        items: pendingOrder.items,
+        shippingAddress: pendingOrder.shippingAddress,
+        paymentMethod: "PayOS",
+        itemsPrice: pendingOrder.itemsPrice,
+        taxPrice: pendingOrder.taxPrice,
+        shippingPrice: pendingOrder.shippingPrice,
+        totalPrice: pendingOrder.totalPrice,
+        discountAmount: pendingOrder.discountAmount,
+        discountApplied: pendingOrder.discountApplied,
+        isPaid: true,
+        paidAt: new Date(),
+        paymentResult: {
+          provider: "PayOS",
+          payOSData: {
+            orderCode: pendingOrder.payOSOrderCode,
+            paymentLinkId: pendingOrder.payOSPaymentLinkId,
+            checkoutUrl: pendingOrder.payOSCheckoutUrl,
+            qrCode: pendingOrder.payOSQrCode,
+          },
+          status: req.body.status || "PAID",
+          update_time: req.body.update_time || new Date(),
+          email_address: req.body.email_address,
         },
-        status: req.body.status || "PAID",
-        update_time: req.body.update_time || new Date(),
-        email_address: req.body.email_address,
-      },
-    });
+      };
+      
+      const createdOrders = await Order.create([orderData], { session });
+      order = createdOrders[0];
+    } catch (createError) {
+      // ✅ Nếu lỗi duplicate key (orderCode đã tồn tại), tìm order hiện có
+      if (createError.code === 11000 || createError.codeName === 'DuplicateKey') {
+        await session.abortTransaction();
+        session.endSession();
+        
+        console.log(`⚠️ Duplicate key error - Order với payOSOrderCode ${pendingOrder.payOSOrderCode} đã tồn tại`);
+        
+        const existingOrder = await Order.findOne({
+          "paymentResult.payOSData.orderCode": pendingOrder.payOSOrderCode,
+        });
+        
+        if (existingOrder) {
+          let populatedOrder = await Order.findById(existingOrder._id)
+            .populate("userId", "name email")
+            .populate("items.productId", "name image");
+          populatedOrder = await enrichOrderItems(populatedOrder);
+          
+          return res.status(200).json({
+            success: true,
+            message: "Đơn hàng đã được tạo trước đó",
+            data: populatedOrder,
+          });
+        }
+      }
+      
+      // Nếu là lỗi khác, throw lại
+      await session.abortTransaction();
+      session.endSession();
+      throw createError;
+    }
 
-    // Trừ kho cho từng item
+    // ✅ BƯỚC 5: Trừ kho cho từng item trong transaction
     for (const item of order.items) {
-      const product = await Product.findById(item.productId);
+      const product = await Product.findById(item.productId).session(session);
       if (!product) continue;
 
       let variantData = null;
@@ -438,9 +517,9 @@ exports.updateOrderToPaid = async (req, res) => {
         (sum, v) => sum + (v.countInStock || 0),
         0
       );
-      await product.save();
+      await product.save({ session });
 
-      await Inventory.create({
+      await Inventory.create([{
         productId: item.productId,
         variant: variantData,
         type: "export",
@@ -450,13 +529,14 @@ exports.updateOrderToPaid = async (req, res) => {
           ? variantData.countInStock
           : product.countInStock,
         orderId: order._id,
-      });
+      }], { session });
     }
 
-    // Xóa PendingOrder sau khi đã tạo Order thành công
-    await PendingOrder.findByIdAndDelete(pendingOrder._id);
+    // ✅ BƯỚC 6: Commit transaction - tất cả operations đã thành công
+    await session.commitTransaction();
+    session.endSession();
 
-    // Tạo thông báo cho người mua và admin/staff
+    // ✅ BƯỚC 7: Tạo thông báo cho người mua và admin/staff (ngoài transaction)
     try {
       await createNotification(
         order.userId,
@@ -480,6 +560,7 @@ exports.updateOrderToPaid = async (req, res) => {
       );
     } catch (notifErr) {
       console.error("Error creating order notifications:", notifErr);
+      // Không throw error vì notification không quan trọng bằng việc tạo order
     }
 
     let populatedOrder = await Order.findById(order._id)
@@ -494,7 +575,34 @@ exports.updateOrderToPaid = async (req, res) => {
       data: populatedOrder,
     });
   } catch (error) {
-    console.error(error);
+    // ✅ Rollback transaction nếu có lỗi
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    
+    console.error("❌ Error in updateOrderToPaid:", error);
+    
+    // ✅ Xử lý lỗi duplicate key một cách graceful
+    if (error.code === 11000 || error.codeName === 'DuplicateKey') {
+      const existingOrder = await Order.findOne({
+        "paymentResult.payOSData.orderCode": req.body.orderCode || req.query.orderCode,
+      });
+      
+      if (existingOrder) {
+        let populatedOrder = await Order.findById(existingOrder._id)
+          .populate("userId", "name email")
+          .populate("items.productId", "name image");
+        populatedOrder = await enrichOrderItems(populatedOrder);
+        
+        return res.status(200).json({
+          success: true,
+          message: "Đơn hàng đã được tạo trước đó",
+          data: populatedOrder,
+        });
+      }
+    }
+    
     res.status(500).json({ success: false, message: error.message });
   }
 };
