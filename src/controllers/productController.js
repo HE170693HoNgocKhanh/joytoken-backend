@@ -1,6 +1,8 @@
 const Product = require("../models/Product");
 const Category = require("../models/Category");
 const cloudinary = require("../config/cloudinary");
+const Inventory = require("../models/Inventory");
+const { default: mongoose } = require("mongoose");
 
 // 🧩 Helper: upload 1 hoặc nhiều ảnh lên Cloudinary
 const uploadToCloudinary = async (files) => {
@@ -232,8 +234,6 @@ exports.createProduct = async (req, res) => {
     });
 
     // 🔹 Tạo record Inventory cho product (import)
-    const Inventory = require("../models/Inventory");
-
     // Nếu product có variants, tạo record import cho từng variant
     if (variants.length > 0) {
       for (const v of variants) {
@@ -284,6 +284,194 @@ exports.createProduct = async (req, res) => {
 // ========================
 // ✏️ UPDATE PRODUCT
 // ========================
+// exports.updateProduct = async (req, res) => {
+//   try {
+//     const product = await Product.findById(req.params.id);
+//     if (!product)
+//       return res
+//         .status(404)
+//         .json({ success: false, message: "Không tìm thấy sản phẩm" });
+
+//     const sellerId = product.seller?.toString();
+//     const userId = req.user?.id;
+//     const role = req.user?.role;
+//     if (
+//       sellerId &&
+//       sellerId !== userId &&
+//       role !== "admin" &&
+//       role !== "seller"
+//     )
+//       return res.status(403).json({
+//         success: false,
+//         message: "Bạn không có quyền chỉnh sửa sản phẩm này",
+//       });
+
+//     const {
+//       name,
+//       description,
+//       price,
+//       category,
+//       countInStock,
+//       personalize,
+//       isActive,
+//     } = req.body;
+
+//     // 🔍 Check category nếu đổi
+//     if (category && category !== product.category.toString()) {
+//       const categoryExists = await Category.findById(category);
+//       if (!categoryExists)
+//         return res
+//           .status(400)
+//           .json({ success: false, message: "Danh mục không tồn tại" });
+//     }
+
+//     // 🔧 Parse variants
+//     let variants = product.variants || [];
+//     if (req.body.variants) {
+//       if (Array.isArray(req.body.variants)) {
+//         variants = req.body.variants.map((v) => JSON.parse(v));
+//       } else {
+//         variants = [JSON.parse(req.body.variants)];
+//       }
+//     }
+
+//     // Parse events (đã gộp tags vào) - LUÔN parse, kể cả mảng rỗng
+//     console.log("📦 UPDATE PRODUCT - Raw body events:", req.body.events);
+//     console.log("📦 UPDATE PRODUCT - Current product events:", product.events);
+
+//     // Gộp tags cũ vào events nếu có
+//     let currentEvents = [...(product.events || []), ...(product.tags || [])];
+
+//     let events = currentEvents;
+//     if (req.body.events !== undefined) {
+//       try {
+//         events =
+//           typeof req.body.events === "string"
+//             ? JSON.parse(req.body.events)
+//             : req.body.events || [];
+//         if (!Array.isArray(events)) events = [];
+//       } catch (e) {
+//         console.error("Error parsing events:", e);
+//         events = [];
+//       }
+//     }
+//     console.log("✅ Parsed events (đã gộp tags):", events);
+
+//     // Parse flags - xử lý cả string "true"/"false" và boolean
+//     console.log("📦 UPDATE PRODUCT - Raw body flags:", {
+//       isBestSeller: req.body.isBestSeller,
+//       isNew: req.body.isNew,
+//       isBackInStock: req.body.isBackInStock,
+//       label: req.body.label,
+//     });
+
+//     const isBestSeller =
+//       req.body.isBestSeller !== undefined
+//         ? req.body.isBestSeller === "true" || req.body.isBestSeller === true
+//         : product.isBestSeller || false;
+//     const isNew =
+//       req.body.isNew !== undefined
+//         ? req.body.isNew === "true" || req.body.isNew === true
+//         : product.isNew || false;
+//     const isBackInStock =
+//       req.body.isBackInStock !== undefined
+//         ? req.body.isBackInStock === "true" || req.body.isBackInStock === true
+//         : product.isBackInStock || false;
+//     const label =
+//       req.body.label !== undefined
+//         ? req.body.label && req.body.label.trim() !== ""
+//           ? req.body.label
+//           : null
+//         : product.label;
+
+//     console.log("✅ Parsed flags:", {
+//       isBestSeller,
+//       isNew,
+//       isBackInStock,
+//       label,
+//     });
+
+//     // 📸 Upload ảnh mới (nếu có)
+//     let image = product.image;
+//     let images = product.images || [];
+
+//     if (req.files && req.files.image && req.files.image.length > 0) {
+//       const uploadedMain = await uploadToCloudinary(req.files.image);
+//       image = uploadedMain[0]; // thay ảnh chính
+//     }
+
+//     // ✅ Xử lý images: dùng keptImages nếu có (loại bỏ ảnh bị xóa), rồi append ảnh mới
+//     if (req.body.keptImages) {
+//       try {
+//         const kept = JSON.parse(req.body.keptImages);
+//         images = Array.isArray(kept) ? kept : [];
+//       } catch (e) {
+//         console.error("Error parsing keptImages:", e);
+//         images = product.images || [];
+//       }
+//     }
+
+//     if (req.files && req.files.images && req.files.images.length > 0) {
+//       const uploadedList = await uploadToCloudinary(req.files.images);
+//       images = [...images, ...uploadedList]; // append vào kept (đã loại bỏ removed)
+//     }
+
+//     const updateData = {
+//       name,
+//       description,
+//       price,
+//       category,
+//       image,
+//       images,
+//       countInStock, // FE đã gửi tổng số lượng
+//       variants,
+//       personalize,
+//       isActive,
+//       events: events,
+//       tags: [], // Không dùng tags nữa, đã gộp vào events
+//       isBestSeller: isBestSeller,
+//       isNew: isNew,
+//       isBackInStock: isBackInStock,
+//       label: label,
+//     };
+
+//     console.log("💾 Updating product with data:", {
+//       events: updateData.events,
+//       isBestSeller: updateData.isBestSeller,
+//       isNew: updateData.isNew,
+//       isBackInStock: updateData.isBackInStock,
+//       label: updateData.label,
+//       images: updateData.images, // ✅ Log để kiểm tra images sau update
+//     });
+
+//     const updatedProduct = await Product.findByIdAndUpdate(
+//       req.params.id,
+//       updateData,
+//       { new: true, runValidators: true }
+//     )
+//       .populate("category", "name")
+//       .populate("seller", "name email");
+
+//     console.log("✅ Product updated successfully:", {
+//       _id: updatedProduct._id,
+//       events: updatedProduct.events,
+//       isBestSeller: updatedProduct.isBestSeller,
+//       isNew: updatedProduct.isNew,
+//       isBackInStock: updatedProduct.isBackInStock,
+//       label: updatedProduct.label,
+//       images: updatedProduct.images,
+//     });
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Cập nhật sản phẩm thành công",
+//       data: updatedProduct,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ success: false, message: error.message });
+//   }
+// };
+
 exports.updateProduct = async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -295,6 +483,7 @@ exports.updateProduct = async (req, res) => {
     const sellerId = product.seller?.toString();
     const userId = req.user?.id;
     const role = req.user?.role;
+
     if (
       sellerId &&
       sellerId !== userId &&
@@ -316,7 +505,7 @@ exports.updateProduct = async (req, res) => {
       isActive,
     } = req.body;
 
-    // 🔍 Check category nếu đổi
+    // 🔍 Kiểm tra category nếu thay đổi
     if (category && category !== product.category.toString()) {
       const categoryExists = await Category.findById(category);
       if (!categoryExists)
@@ -329,19 +518,16 @@ exports.updateProduct = async (req, res) => {
     let variants = product.variants || [];
     if (req.body.variants) {
       if (Array.isArray(req.body.variants)) {
-        variants = req.body.variants.map((v) => JSON.parse(v));
+        variants = req.body.variants.map((v) =>
+          typeof v === "string" ? JSON.parse(v) : v
+        );
       } else {
         variants = [JSON.parse(req.body.variants)];
       }
     }
 
-    // Parse events (đã gộp tags vào) - LUÔN parse, kể cả mảng rỗng
-    console.log("📦 UPDATE PRODUCT - Raw body events:", req.body.events);
-    console.log("📦 UPDATE PRODUCT - Current product events:", product.events);
-
-    // Gộp tags cũ vào events nếu có
+    // 📦 Gộp events/tags
     let currentEvents = [...(product.events || []), ...(product.tags || [])];
-
     let events = currentEvents;
     if (req.body.events !== undefined) {
       try {
@@ -355,16 +541,8 @@ exports.updateProduct = async (req, res) => {
         events = [];
       }
     }
-    console.log("✅ Parsed events (đã gộp tags):", events);
 
-    // Parse flags - xử lý cả string "true"/"false" và boolean
-    console.log("📦 UPDATE PRODUCT - Raw body flags:", {
-      isBestSeller: req.body.isBestSeller,
-      isNew: req.body.isNew,
-      isBackInStock: req.body.isBackInStock,
-      label: req.body.label,
-    });
-
+    // 🏷️ Parse flags
     const isBestSeller =
       req.body.isBestSeller !== undefined
         ? req.body.isBestSeller === "true" || req.body.isBestSeller === true
@@ -384,23 +562,15 @@ exports.updateProduct = async (req, res) => {
           : null
         : product.label;
 
-    console.log("✅ Parsed flags:", {
-      isBestSeller,
-      isNew,
-      isBackInStock,
-      label,
-    });
-
-    // 📸 Upload ảnh mới (nếu có)
+    // 📸 Upload ảnh mới
     let image = product.image;
     let images = product.images || [];
 
     if (req.files && req.files.image && req.files.image.length > 0) {
       const uploadedMain = await uploadToCloudinary(req.files.image);
-      image = uploadedMain[0]; // thay ảnh chính
+      image = uploadedMain[0];
     }
 
-    // ✅ Xử lý images: dùng keptImages nếu có (loại bỏ ảnh bị xóa), rồi append ảnh mới
     if (req.body.keptImages) {
       try {
         const kept = JSON.parse(req.body.keptImages);
@@ -413,9 +583,76 @@ exports.updateProduct = async (req, res) => {
 
     if (req.files && req.files.images && req.files.images.length > 0) {
       const uploadedList = await uploadToCloudinary(req.files.images);
-      images = [...images, ...uploadedList]; // append vào kept (đã loại bỏ removed)
+      images = [...images, ...uploadedList];
     }
 
+    // 🧮 Inventory xử lý (chỉ tạo khi có variant mới hoặc thay đổi tồn kho)
+    const oldVariants = product.variants || [];
+
+    for (const v of variants) {
+      const old = oldVariants.find(
+        (ov) => ov._id?.toString() === v._id?.toString()
+      );
+
+      const newQty = Number(v.countInStock ?? 0);
+      const oldQty = Number(old?.countInStock ?? 0);
+
+      // 🆕 Nếu variant hoàn toàn mới (chưa có trong DB)
+      if (!v._id || !old) {
+        await Inventory.create({
+          productId: product._id,
+          variant: {
+            _id: v._id || new mongoose.Types.ObjectId(),
+            size: v.size,
+            color: v.color,
+          },
+          type: "import",
+          quantity: newQty,
+          note: "Nhập kho khi tạo sản phẩm",
+          date: new Date(),
+          stockAfter: newQty,
+          orderId: null,
+        });
+
+        console.log(
+          `🆕 Inventory created for NEW variant ${v.size || ""}-${
+            v.color || ""
+          }: +${newQty}`
+        );
+      }
+
+      // ⚙️ Nếu variant cũ thay đổi tồn kho
+      else if (newQty !== oldQty) {
+        const diff = newQty - oldQty;
+        const type = diff > 0 ? "import" : "export";
+
+        await Inventory.create({
+          productId: product._id,
+          variant: {
+            _id: v._id,
+            size: v.size,
+            color: v.color,
+          },
+          type,
+          quantity: Math.abs(diff),
+          note:
+            type === "import"
+              ? "Nhập kho khi tăng số lượng"
+              : "Xuất kho khi giảm số lượng",
+          date: new Date(),
+          stockAfter: newQty,
+          orderId: null,
+        });
+
+        console.log(
+          `🔁 Inventory ${type} for ${v.size || ""}-${v.color || ""}: ${
+            diff > 0 ? "+" : "-"
+          }${Math.abs(diff)}`
+        );
+      }
+    }
+
+    // 💾 Dữ liệu cập nhật
     const updateData = {
       name,
       description,
@@ -423,26 +660,17 @@ exports.updateProduct = async (req, res) => {
       category,
       image,
       images,
-      countInStock, // FE đã gửi tổng số lượng
+      countInStock,
       variants,
       personalize,
       isActive,
-      events: events,
-      tags: [], // Không dùng tags nữa, đã gộp vào events
-      isBestSeller: isBestSeller,
-      isNew: isNew,
-      isBackInStock: isBackInStock,
-      label: label,
+      events,
+      tags: [],
+      isBestSeller,
+      isNew,
+      isBackInStock,
+      label,
     };
-
-    console.log("💾 Updating product with data:", {
-      events: updateData.events,
-      isBestSeller: updateData.isBestSeller,
-      isNew: updateData.isNew,
-      isBackInStock: updateData.isBackInStock,
-      label: updateData.label,
-      images: updateData.images, // ✅ Log để kiểm tra images sau update
-    });
 
     const updatedProduct = await Product.findByIdAndUpdate(
       req.params.id,
@@ -452,25 +680,17 @@ exports.updateProduct = async (req, res) => {
       .populate("category", "name")
       .populate("seller", "name email");
 
-    console.log("✅ Product updated successfully:", {
-      _id: updatedProduct._id,
-      events: updatedProduct.events,
-      isBestSeller: updatedProduct.isBestSeller,
-      isNew: updatedProduct.isNew,
-      isBackInStock: updatedProduct.isBackInStock,
-      label: updatedProduct.label,
-      images: updatedProduct.images,
-    });
-
     res.status(200).json({
       success: true,
       message: "Cập nhật sản phẩm thành công",
       data: updatedProduct,
     });
   } catch (error) {
+    console.error("❌ Update product error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ========================
 // 🗑️ DELETE PRODUCT (SOFT)
 // ========================
