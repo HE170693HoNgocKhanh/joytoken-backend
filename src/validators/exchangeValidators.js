@@ -49,7 +49,7 @@ const createExchangeValidator = validateBody({
 const updateExchangeStatusValidator = validateBody({
   status: {
     required: true,
-    isIn: ["pending", "approved", "rejected", "completed", "cancelled"],
+    isIn: ["Pending", "Approved", "Rejected", "Completed", "Cancelled"],
   },
   adminNote: {
     isLength: { min: 0, max: 500 },

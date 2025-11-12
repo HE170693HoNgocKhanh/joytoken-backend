@@ -7,8 +7,8 @@ exports.getConversationDetail = async (req, res) => {
     // ✅ Kiểm tra conversation tồn tại
     const conversation = await Conversation.findById(id).populate(
       "participants",
-      "name email"
-    ); // chỉ lấy thông tin cơ bản
+      "name email role avatar"
+    ); // lấy thêm role và avatar để hiển thị đầy đủ
     if (!conversation) {
       return res.status(404).json({
         success: false,
@@ -18,7 +18,7 @@ exports.getConversationDetail = async (req, res) => {
 
     // ✅ Lấy danh sách tin nhắn theo conversationId
     const messages = await Message.find({ conversationId: id })
-      .populate("sender", "name email") // lấy thông tin người gửi
+      .populate("sender", "name email role avatar") // lấy đầy đủ thông tin người gửi
       .sort({ createdAt: 1 }); // sắp xếp theo thời gian tăng dần
 
     res.status(200).json({

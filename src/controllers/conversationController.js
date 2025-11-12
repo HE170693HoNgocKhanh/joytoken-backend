@@ -10,12 +10,12 @@ exports.getAllConversationsByUser = async (req, res) => {
     })
       .populate({
         path: "participants",
-        select: "name email role", // thêm role để hiển thị
+        select: "name email role avatar", // thêm role và avatar để hiển thị
       })
       .populate({
         path: "lastMessage",
         select: "content sender createdAt",
-        populate: { path: "sender", select: "name avatar" },
+        populate: { path: "sender", select: "name avatar role" },
       })
       .sort({ updatedAt: -1 });
 

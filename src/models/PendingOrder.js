@@ -90,6 +90,12 @@ const pendingOrderSchema = new mongoose.Schema(
       default: () => new Date(Date.now() + 15 * 60 * 1000), // 15 phút
       index: { expireAfterSeconds: 0 },
     },
+    // Thêm trường để track exchange (nếu pending order này từ exchange)
+    exchangeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Exchange",
+      default: null,
+    },
   },
   {
     timestamps: true,

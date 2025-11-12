@@ -6,6 +6,7 @@ const {
   getAllExchanges,
   updateExchangeStatus,
   cancelExchange,
+  processExchangePayment,
 } = require("../controllers/exchangeController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const {
@@ -21,6 +22,7 @@ router.post("/", verifyToken, createExchangeValidator, createExchange);
 router.get("/my-exchanges", verifyToken, getMyExchanges);
 router.get("/:id", verifyToken, exchangeIdParamValidator, getExchangeById);
 router.put("/:id/cancel", verifyToken, exchangeIdParamValidator, cancelExchange);
+router.put("/:exchangeId/payment", verifyToken, processExchangePayment);
 
 // Protected routes - Admin/Staff/Seller
 router.get("/", verifyToken, requireRole(["admin", "seller"]), getAllExchanges);

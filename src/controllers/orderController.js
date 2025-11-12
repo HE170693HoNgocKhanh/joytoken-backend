@@ -608,6 +608,45 @@ exports.updateOrderStatus = async (req, res) => {
       .populate("items.productId", "name image");
     updatedOrder = await enrichOrderItems(updatedOrder);
 
+    // Tạo thông báo cho user khi staff cập nhật trạng thái
+    try {
+      const statusMessages = {
+        Pending: "Đơn hàng của bạn đang chờ xử lý",
+        Processing: "Đơn hàng của bạn đang được xử lý",
+        Shipped: "Đơn hàng của bạn đã được gửi đi",
+        Delivered: "Đơn hàng của bạn đã được giao thành công",
+        Cancelled: `Đơn hàng của bạn đã bị hủy. Lý do: ${order.cancelReason || "Không có lý do"}`,
+      };
+
+      const statusTitles = {
+        Pending: "Đơn hàng chờ xử lý",
+        Processing: "Đơn hàng đang xử lý",
+        Shipped: "Đơn hàng đã gửi",
+        Delivered: "Đơn hàng đã giao",
+        Cancelled: "Đơn hàng đã hủy",
+      };
+
+      const notificationType = targetStatus === "Delivered" 
+        ? "order_delivered" 
+        : targetStatus === "Cancelled"
+        ? "order_cancelled"
+        : "order_status_updated";
+
+      // Lấy userId (có thể là ObjectId hoặc đã populate)
+      const userId = order.userId?._id || order.userId;
+      
+      await createNotification(
+        userId,
+        notificationType,
+        statusTitles[targetStatus] || "Cập nhật trạng thái đơn hàng",
+        `${statusMessages[targetStatus] || `Trạng thái đơn hàng #${order._id.toString().slice(-6)} đã được cập nhật thành ${targetStatus}`}.`,
+        `/order-history`
+      );
+    } catch (notifError) {
+      console.error("Error creating order status update notification:", notifError);
+      // Không throw error, chỉ log để không ảnh hưởng đến response
+    }
+
     res.status(200).json({
       success: true,
       message: "Cập nhật trạng thái thành công",
