@@ -635,10 +635,7 @@ exports.updateProduct = async (req, res) => {
           },
           type,
           quantity: Math.abs(diff),
-          note:
-            type === "import"
-              ? "Nhập kho khi tăng số lượng"
-              : "Xuất kho khi giảm số lượng",
+          note:`${v.note}`,
           date: new Date(),
           stockAfter: newQty,
           orderId: null,
