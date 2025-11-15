@@ -753,3 +753,52 @@ exports.getProductsByCategory = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ========================
+// 📊 GET PRODUCTS WITH ORDER VALUES (for homepage)
+// ========================
+exports.getProductsWithOrderValues = async (req, res) => {
+  try {
+    const Order = require("../models/Order");
+    
+    // Lấy tất cả products
+    const products = await Product.find({ isActive: true })
+      .populate("category", "name")
+      .limit(100);
+
+    // Lấy tất cả orders đã thanh toán và không bị hủy
+    const orders = await Order.find({
+      status: { $ne: "Cancelled" },
+      isPaid: true,
+    }).select("items");
+
+    // Tính giá trị đơn hàng cho mỗi sản phẩm
+    const productOrderValue = {};
+    
+    orders.forEach((order) => {
+      order.items?.forEach((item) => {
+        const productId = item.productId?._id?.toString() || item.productId?.toString();
+        if (productId) {
+          const itemValue = (item.price || 0) * (item.quantity || 0);
+          productOrderValue[productId] = (productOrderValue[productId] || 0) + itemValue;
+        }
+      });
+    });
+
+    // Thêm orderValue vào mỗi sản phẩm và sắp xếp
+    const productsWithValues = products.map((product) => ({
+      ...product.toObject(),
+      orderValue: productOrderValue[product._id.toString()] || 0,
+    }));
+
+    // Sắp xếp theo giá trị đơn hàng từ cao đến thấp
+    productsWithValues.sort((a, b) => b.orderValue - a.orderValue);
+
+    res.status(200).json({
+      success: true,
+      data: productsWithValues,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

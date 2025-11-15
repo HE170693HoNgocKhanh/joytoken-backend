@@ -6,6 +6,7 @@ const {
   updateProduct,
   deleteProduct,
   getProductsBySeller,
+  getProductsWithOrderValues,
 } = require("../controllers/productController");
 const { verifyToken, requireRole } = require("../middleware/authMiddleware");
 const upload = require("../middleware/upload"); // 👈 thêm middleware upload
@@ -33,6 +34,7 @@ router.get("/seller/:sellerId", sellerIdParamValidator, getProductsBySeller);
 // 🌍 Public routes
 // =====================
 router.get("/", getAllProducts);
+router.get("/featured/order-values", getProductsWithOrderValues); // ✅ Endpoint mới cho homepage
 router.get("/:id", productIdParamValidator, getProductById);
 
 // =====================

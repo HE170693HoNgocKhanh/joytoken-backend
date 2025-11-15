@@ -86,6 +86,20 @@ exports.createExchange = async (req, res) => {
       });
     }
 
+    // ✅ Kiểm tra xem đơn hàng này đã có exchange request đang pending chưa
+    const existingExchange = await Exchange.findOne({
+      originalOrderId: originalOrderId,
+      userId: req.user.id,
+      status: { $in: ["Pending", "Approved"] }, // Chỉ check Pending và Approved (chưa Completed/Cancelled)
+    });
+
+    if (existingExchange) {
+      return res.status(400).json({
+        success: false,
+        message: `Đơn hàng này đang có yêu cầu đổi hàng đang xử lý (trạng thái: ${existingExchange.status === "Pending" ? "Đang chờ" : "Đã duyệt"}). Vui lòng chờ xử lý xong trước khi tạo yêu cầu mới.`,
+      });
+    }
+
     // 2️⃣ Kiểm tra tồn kho cho sản phẩm mới
     for (const item of itemsToExchange) {
       const product = await Product.findById(item.productId);
